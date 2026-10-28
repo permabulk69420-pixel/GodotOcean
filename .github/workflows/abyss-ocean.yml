@@ -1,0 +1,57 @@
+name: Abyss Ocean
+
+on:
+  push:
+    branches: [codex/abyss-ocean]
+    paths: ['ocean/**', 'project.godot', '.github/tests/abyss_ocean.gd', '.github/tests/quest_xr_interface.gd', '.github/workflows/abyss-ocean.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: abyss-ocean
+  cancel-in-progress: true
+
+jobs:
+  godot:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        stereo: ['0', '1']
+    env:
+      GODOT_VERSION: '4.6.3'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Vulkan preview dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xvfb libvulkan1 mesa-vulkan-drivers vulkan-validationlayers libxinerama1 libxcursor1 libxi6 libxrandr2
+      - name: Install verified Godot
+        run: |
+          mkdir -p "$RUNNER_TEMP/godot"
+          cd "$RUNNER_TEMP/godot"
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          file="Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          curl --fail --location --silent --show-error "$base/$file" -o "$file"
+          curl --fail --location --silent --show-error "$base/SHA512-SUMS.txt" -o SHA512-SUMS.txt
+          grep " $file$" SHA512-SUMS.txt | sha512sum --check -
+          unzip -q "$file"
+          chmod +x "Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          ln -s "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$RUNNER_TEMP/godot/godot"
+          echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
+      - name: Verify the ocean in stereo VR
+        run: |
+          mkdir -p "$RUNNER_TEMP/ocean-preview"
+          xvfb-run -a godot --editor --audio-driver Dummy --path . res://ocean/main.tscn --import
+          OCEAN_CAPTURE_DIR="$RUNNER_TEMP/ocean-preview" OCEAN_STEREO="${{ matrix.stereo }}" timeout 300 xvfb-run -a godot --path . --audio-driver Dummy --rendering-method forward_plus --gpu-validation --resolution 1280x960 --script res://.github/tests/abyss_ocean.gd > "$RUNNER_TEMP/ocean-preview/check.log" 2>&1 || { cat "$RUNNER_TEMP/ocean-preview/check.log"; exit 1; }
+          cat "$RUNNER_TEMP/ocean-preview/check.log"
+          if grep -E 'SCRIPT ERROR|ERROR:|Format operand|Validation Error|SYNC-HAZARD|VUID-' "$RUNNER_TEMP/ocean-preview/check.log"; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Abyss-Ocean-Preview-${{ matrix.stereo }}
+          path: ${{ runner.temp }}/ocean-preview
+          if-no-files-found: error
+          retention-days: 30
