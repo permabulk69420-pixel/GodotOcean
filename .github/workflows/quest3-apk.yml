@@ -36,7 +36,7 @@ jobs:
 
       - name: Install Android and Vulkan build tools
         run: |
-          sdkmanager 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0'
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends xvfb libvulkan1 mesa-vulkan-drivers libxinerama1 libxcursor1 libxi6 libxrandr2
 
