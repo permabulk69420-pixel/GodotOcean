@@ -108,7 +108,8 @@ func create_pipeline(block_dimensions : Array, descriptor_sets : Array, shader :
 		assert(len(sets) >= 1, 'Must specify at least on descriptor set!')
 
 		device.compute_list_bind_compute_pipeline(compute_list, pipeline)
-		device.compute_list_set_push_constant(compute_list, push_constant, push_constant.size())
+		if not push_constant.is_empty():
+			device.compute_list_set_push_constant(compute_list, push_constant, push_constant.size())
 		for i in range(len(sets)):
 			device.compute_list_bind_uniform_set(compute_list, sets[i], i)
 

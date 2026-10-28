@@ -34,11 +34,16 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/debug.keystore
+          key: quest3-debug-signing-v1
+
       - name: Install Android and Vulkan build tools
         run: |
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0'
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends xvfb libvulkan1 mesa-vulkan-drivers libxinerama1 libxcursor1 libxi6 libxrandr2
+          sudo apt-get install -y --no-install-recommends xvfb libvulkan1 mesa-vulkan-drivers vulkan-validationlayers libxinerama1 libxcursor1 libxi6 libxrandr2
 
       - name: Install verified Godot and Android template
         run: |
@@ -62,7 +67,9 @@ jobs:
       - name: Configure Android export
         run: |
           mkdir -p "$HOME/.config/godot" .godot
-          keytool -genkeypair -keystore "$RUNNER_TEMP/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'
+          if [ ! -f "$RUNNER_TEMP/debug.keystore" ]; then
+            keytool -genkeypair -keystore "$RUNNER_TEMP/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'
+          fi
           cat > "$HOME/.config/godot/editor_settings-4.3.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
           [resource]
@@ -79,6 +86,9 @@ jobs:
         run: |
           mkdir -p artifacts
           xvfb-run -a godot --editor --audio-driver Dummy --path . --import
+          QUEST_CAPTURE="$RUNNER_TEMP/quest-waves.png" timeout 90 xvfb-run -a godot --path . --audio-driver Dummy --rendering-method mobile --gpu-validation --resolution 960x540 --script res://.github/tests/quest_waves.gd > "$RUNNER_TEMP/quest-waves.log" 2>&1 || { cat "$RUNNER_TEMP/quest-waves.log"; exit 1; }
+          cat "$RUNNER_TEMP/quest-waves.log"
+          if grep -E 'Format operand|Validation Error|SYNC-HAZARD|VUID-' "$RUNNER_TEMP/quest-waves.log"; then exit 1; fi
           godot --headless --path . --export-debug 'Meta Quest' artifacts/GodotOcean-Quest3.apk
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose artifacts/GodotOcean-Quest3.apk
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump xmltree artifacts/GodotOcean-Quest3.apk AndroidManifest.xml > "$RUNNER_TEMP/manifest.txt"
