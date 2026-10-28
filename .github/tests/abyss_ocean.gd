@@ -88,24 +88,37 @@ func run() -> void:
 		await frames(2)
 		left.set_input(&'primary',Vector2.ZERO)
 		check(scene.origin.position.x>initial.x,'Left stick strafes the real player')
-		# Move near the water, then cross it using the actual controller input path.
-		scene.origin.position.y=-1.5
+		# Accelerate elapsed simulation time; normal physics and controller movement stay active.
+		Engine.time_scale=6.0
 		right.set_input(&'primary',Vector2(0,-1))
-		await frames(8)
+		var descent_frames:=0
+		while scene.depth<2.0 and descent_frames<90:
+			await frames(1)
+			descent_frames+=1
 		right.set_input(&'primary',Vector2.ZERO)
-		check(scene.origin.position.y< -1.5,'Right stick moves the real player downward')
+		check(scene.depth>=2.0 and scene.submerged,'Controller swimming reaches at least two metres beneath the moving water')
+		check(scene.origin.position.y<initial.y,'Controller input moved the player downward')
+		print('Controller dive: ',descent_frames,' frames; head=',scene.camera.global_position,' depth=',scene.depth)
 	else:
-		scene.origin.position.y=-3
+		scene.origin.position.y=-5
 	await frames(2)
-	# A deeper dive removes ambiguity from the instantaneous height of a crest.
-	scene.origin.position.y=-5
-	await frames(3)
 	check(scene.submerged,'Live diving enters underwater rendering')
 	check(scene.world.environment==scene.underwater_environment,'Underwater absorption activates')
 	capture('underwater')
-	scene.origin.position.y=1
-	await frames(3)
-	check(not scene.submerged,'Surfacing restores above-water rendering')
+	if stereo:
+		right.set_input(&'primary',Vector2(0,1))
+		var ascent_frames:=0
+		while (scene.camera.global_position.y<1.6 or scene.submerged) and ascent_frames<90:
+			await frames(1)
+			ascent_frames+=1
+		right.set_input(&'primary',Vector2.ZERO)
+		print('Controller resurfacing: ',ascent_frames,' frames; head=',scene.camera.global_position,' depth=',scene.depth)
+		Engine.time_scale=1.0
+	else:
+		scene.origin.position.y=1
+	await frames(2)
+	check(not scene.submerged,'Controller swimming resurfaces above the moving water')
+	capture('resurfaced')
 	check(scene.ocean.simulation_time>first_time,'Simulation continues throughout movement and diving')
 	if stereo:
 		stereo.emit_signal(&'session_stopping')
