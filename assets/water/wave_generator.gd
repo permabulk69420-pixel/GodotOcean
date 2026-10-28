@@ -16,13 +16,16 @@ var pass_num_cascades_remaining : int
 
 func init_gpu(num_cascades : int) -> void:
 	# --- DEVICE/SHADER CREATION ---
+	# Quest uses 256-wide FFTs and smaller tiles to stay within mobile workgroup limits.
+	var mobile := OS.has_feature("android") or map_size <= 256
+	var shader_dir := "res://quest/compute/" if mobile else "res://assets/shaders/compute/"
 	if not context: context = RenderingContext.create(RenderingServer.get_rendering_device())
-	var spectrum_compute_shader := context.load_shader('./assets/shaders/compute/spectrum_compute.glsl')
-	var fft_butterfly_shader := context.load_shader('./assets/shaders/compute/fft_butterfly.glsl')
-	var spectrum_modulate_shader := context.load_shader('./assets/shaders/compute/spectrum_modulate.glsl')
-	var fft_compute_shader := context.load_shader('./assets/shaders/compute/fft_compute.glsl')
-	var transpose_shader := context.load_shader('./assets/shaders/compute/transpose.glsl')
-	var fft_unpack_shader := context.load_shader('./assets/shaders/compute/fft_unpack.glsl')
+	var spectrum_compute_shader := context.load_shader('res://assets/shaders/compute/spectrum_compute.glsl')
+	var fft_butterfly_shader := context.load_shader('res://assets/shaders/compute/fft_butterfly.glsl')
+	var spectrum_modulate_shader := context.load_shader('res://assets/shaders/compute/spectrum_modulate.glsl')
+	var fft_compute_shader := context.load_shader(shader_dir + 'fft_compute.glsl')
+	var transpose_shader := context.load_shader(shader_dir + 'transpose.glsl')
+	var fft_unpack_shader := context.load_shader(shader_dir + 'fft_unpack.glsl')
 
 	# --- DESCRIPTOR PREPARATION ---
 	var dims := Vector2i(map_size, map_size)
@@ -45,8 +48,10 @@ func init_gpu(num_cascades : int) -> void:
 	pipelines[&'spectrum_modulate'] = context.create_pipeline([map_size/16, map_size/16, 1], [spectrum_set, fft_buffer_set], spectrum_modulate_shader)
 	pipelines[&'fft_butterfly'] = context.create_pipeline([map_size/2/64, num_fft_stages, 1], [fft_butterfly_set], fft_butterfly_shader)
 	pipelines[&'fft_compute'] = context.create_pipeline([1, map_size, 4], [fft_compute_set], fft_compute_shader)
-	pipelines[&'transpose'] = context.create_pipeline([map_size/32, map_size/32, 4], [fft_compute_set], transpose_shader)
-	pipelines[&'fft_unpack'] = context.create_pipeline([map_size/16, map_size/16, 1], [unpack_set, fft_buffer_set], fft_unpack_shader)
+	var transpose_tile := 16 if mobile else 32
+	var unpack_tile := 8 if mobile else 16
+	pipelines[&'transpose'] = context.create_pipeline([map_size/transpose_tile, map_size/transpose_tile, 4], [fft_compute_set], transpose_shader)
+	pipelines[&'fft_unpack'] = context.create_pipeline([map_size/unpack_tile, map_size/unpack_tile, 1], [unpack_set, fft_buffer_set], fft_unpack_shader)
 
 	# We only need to generate butterfly factors once for each map_size.
 	var compute_list := context.compute_list_begin()

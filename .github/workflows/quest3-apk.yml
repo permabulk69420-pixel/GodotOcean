@@ -1,0 +1,111 @@
+name: Quest 3 APK
+
+on:
+  push:
+    branches: [main, codex/quest3-apk]
+    paths:
+      - '**.gd'
+      - '**.tscn'
+      - '**.tres'
+      - '**.glsl'
+      - '**.gdshader'
+      - '**.import'
+      - 'project.godot'
+      - 'export_presets.cfg'
+      - 'addons/godotopenxrvendors/**'
+      - 'android/.gdignore'
+      - '.github/workflows/quest3-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    env:
+      GODOT_VERSION: '4.3'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android and Vulkan build tools
+        run: |
+          sdkmanager 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0'
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends xvfb libvulkan1 mesa-vulkan-drivers libxinerama1 libxcursor1 libxi6 libxrandr2
+
+      - name: Install verified Godot and Android template
+        run: |
+          mkdir -p "$RUNNER_TEMP/godot" "$HOME/.local/share/godot/export_templates/4.3.stable"
+          cd "$RUNNER_TEMP/godot"
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          curl --fail --location --silent --show-error "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o godot.zip
+          curl --fail --location --silent --show-error "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -o templates.tpz
+          curl --fail --location --silent --show-error "$base/SHA512-SUMS.txt" -o SHA512-SUMS.txt
+          mv godot.zip "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          mv templates.tpz "Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          grep -E "Godot_v${GODOT_VERSION}-stable_(linux.x86_64.zip|export_templates.tpz)$" SHA512-SUMS.txt | sha512sum --check -
+          unzip -q "Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          chmod +x "Godot_v${GODOT_VERSION}-stable_linux.x86_64"
+          ln -s "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$RUNNER_TEMP/godot/godot"
+          echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
+          unzip -j -q "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" templates/android_source.zip -d "$HOME/.local/share/godot/export_templates/4.3.stable"
+          mkdir -p "$GITHUB_WORKSPACE/android/build"
+          unzip -q "$HOME/.local/share/godot/export_templates/4.3.stable/android_source.zip" -d "$GITHUB_WORKSPACE/android/build"
+
+      - name: Configure Android export
+        run: |
+          mkdir -p "$HOME/.config/godot" .godot
+          keytool -genkeypair -keystore "$RUNNER_TEMP/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'
+          cat > "$HOME/.config/godot/editor_settings-4.3.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/debug_keystore = "$RUNNER_TEMP/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+          printf 'res://addons/imgui-godot/imgui-godot-native.gdextension\nres://addons/godotopenxrvendors/meta/plugin.gdextension\n' > .godot/extension_list.cfg
+          printf '\norg.gradle.workers.max=4\norg.gradle.daemon=false\n' >> android/build/gradle.properties
+
+      - name: Import and build Quest 3 APK
+        run: |
+          mkdir -p artifacts
+          xvfb-run -a godot --editor --audio-driver Dummy --path . --import
+          godot --headless --path . --export-debug 'Meta Quest' artifacts/GodotOcean-Quest3.apk
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose artifacts/GodotOcean-Quest3.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump xmltree artifacts/GodotOcean-Quest3.apk AndroidManifest.xml > "$RUNNER_TEMP/manifest.txt"
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, zipfile
+          manifest = Path(__import__('os').environ['RUNNER_TEMP'], 'manifest.txt').read_text()
+          assert re.search(r'com\.oculus\.supportedDevices[^\n]*\n[^\n]*="quest3"', manifest)
+          assert 'org.khronos.openxr.intent.category.IMMERSIVE_HMD' in manifest
+          with zipfile.ZipFile('artifacts/GodotOcean-Quest3.apk') as apk:
+              files = apk.namelist()
+              assert 'lib/arm64-v8a/libopenxr_loader.so' in files
+              assert 'lib/arm64-v8a/libgodotopenxrmeta.so' in files
+              assert 'assets/quest/main.gdc' in files
+              assert not any('/imgui-godot/' in f for f in files)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GodotOcean-Quest3-APK
+          path: artifacts/GodotOcean-Quest3.apk
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+      - name: Publish persistent APK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "quest3-${GITHUB_SHA}" artifacts/GodotOcean-Quest3.apk --target "$GITHUB_SHA" --title 'Quest 3 APK' --notes 'Debug-signed ARM64 OpenXR APK for sideloading on Quest 3. Built by GitHub Actions; physical headset testing is still required.' --prerelease

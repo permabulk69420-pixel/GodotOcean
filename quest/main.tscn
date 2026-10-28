@@ -1,0 +1,130 @@
+[gd_scene load_steps=15 format=3]
+
+[ext_resource type="Script" path="res://quest/main.gd" id="1_skarq"]
+[ext_resource type="Script" path="res://assets/water/wave_cascade_parameters.gd" id="2_pw5n6"]
+[ext_resource type="Texture2D" uid="uid://cnft723bala47" path="res://assets/skybox.png" id="3_0ksgj"]
+[ext_resource type="Material" uid="uid://byumtcccq4ew3" path="res://assets/water/mat_water.tres" id="5_lt75t"]
+[ext_resource type="ArrayMesh" path="res://assets/water/clipmap_low.obj" id="5_n61pp"]
+[ext_resource type="AudioStream" uid="uid://cvvn0vke5comw" path="res://assets/ocean_loop.wav" id="6_jpklm"]
+[ext_resource type="Script" path="res://assets/water/water.gd" id="7_s0x5e"]
+[ext_resource type="AudioStream" uid="uid://ck6vmandgjhy0" path="res://assets/wind_loop.wav" id="8_6r5si"]
+
+[sub_resource type="PanoramaSkyMaterial" id="PanoramaSkyMaterial_t7jwl"]
+panorama = ExtResource("3_0ksgj")
+
+[sub_resource type="Sky" id="Sky_vroi3"]
+sky_material = SubResource("PanoramaSkyMaterial_t7jwl")
+
+[sub_resource type="Environment" id="Environment_icybu"]
+background_mode = 2
+sky = SubResource("Sky_vroi3")
+tonemap_mode = 2
+fog_mode = 1
+fog_light_color = Color(0.272954, 0.419272, 0.484632, 1)
+fog_sun_scatter = 0.05
+fog_density = 1.0
+fog_aerial_perspective = 0.626
+fog_sky_affect = 0.0
+fog_depth_curve = 0.25
+fog_depth_begin = 200.0
+fog_depth_end = 350.0
+volumetric_fog_enabled = false
+volumetric_fog_density = 0.0
+volumetric_fog_length = 256.0
+adjustment_enabled = true
+adjustment_brightness = 0.85
+adjustment_contrast = 1.07
+adjustment_saturation = 1.5
+
+[sub_resource type="Resource" id="Resource_adqv5"]
+script = ExtResource("2_pw5n6")
+tile_length = Vector2(88, 88)
+displacement_scale = 1.0
+normal_scale = 1.0
+wind_speed = 10.0
+wind_direction = 20.0
+fetch_length = 150.0
+swell = 0.8
+spread = 0.2
+detail = 1.0
+whitecap = 0.5
+foam_amount = 8.0
+
+[sub_resource type="Resource" id="Resource_luhq0"]
+script = ExtResource("2_pw5n6")
+tile_length = Vector2(57, 57)
+displacement_scale = 0.75
+normal_scale = 1.0
+wind_speed = 5.0
+wind_direction = 15.0
+fetch_length = 150.0
+swell = 0.8
+spread = 0.4
+detail = 1.0
+whitecap = 0.5
+foam_amount = 0.0
+
+[sub_resource type="Resource" id="Resource_83u3u"]
+script = ExtResource("2_pw5n6")
+tile_length = Vector2(16, 16)
+displacement_scale = 0.0
+normal_scale = 0.25
+wind_speed = 20.0
+wind_direction = 20.0
+fetch_length = 550.0
+swell = 0.8
+spread = 0.4
+detail = 1.0
+whitecap = 0.25
+foam_amount = 3.0
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_skarq")
+
+[node name="Environment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_icybu")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.945601, -0.0516921, 0.321197, -0.00840572, 0.983084, 0.18296, -0.325221, -0.175707, 0.929171, 0, 10, 0)
+shadow_bias = 0.0
+shadow_normal_bias = 6.464
+shadow_opacity = 0.8
+shadow_blur = 5.0
+
+[node name="XROrigin3D" type="XROrigin3D" parent="."]
+position = Vector3(0, 5, -25)
+rotation = Vector3(0, 3.14159265, 0)
+
+[node name="XRCamera3D" type="XRCamera3D" parent="XROrigin3D"]
+current = true
+near = 0.1
+far = 400.0
+
+[node name="LeftController" type="XRController3D" parent="XROrigin3D"]
+tracker = &"left_hand"
+
+[node name="RightController" type="XRController3D" parent="XROrigin3D"]
+tracker = &"right_hand"
+
+[node name="Water" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 0, -25)
+sorting_offset = 999.0
+material_override = ExtResource("5_lt75t")
+cast_shadow = 0
+mesh = ExtResource("5_n61pp")
+skeleton = NodePath("")
+script = ExtResource("7_s0x5e")
+map_size = 256
+mesh_quality = 0
+updates_per_second = 30.0
+parameters = Array[ExtResource("2_pw5n6")]([SubResource("Resource_adqv5"), SubResource("Resource_luhq0"), SubResource("Resource_83u3u")])
+
+[node name="OceanAudioPlayer" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("6_jpklm")
+volume_db = 15.0
+autoplay = true
+
+[node name="WindAudioPlayer" type="AudioStreamPlayer" parent="."]
+stream = ExtResource("8_6r5si")
+volume_db = -30.0
+autoplay = true
