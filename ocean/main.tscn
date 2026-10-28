@@ -46,9 +46,7 @@ rotation_degrees = Vector3(-32, 155, 0)
 light_color = Color(1, 0.95, 0.85, 1)
 light_energy = 1.6
 sky_mode = 1
-shadow_enabled = true
-directional_shadow_max_distance = 240.0
-shadow_blur = 1.0
+shadow_enabled = false
 
 [node name="Ocean" type="Node3D" parent="."]
 script = ExtResource("2")

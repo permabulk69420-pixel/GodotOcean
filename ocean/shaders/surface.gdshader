@@ -3,13 +3,9 @@ render_mode world_vertex_coords, cull_disabled, depth_draw_opaque;
 uniform float simulation_time;
 uniform sampler2D cached_displacement : filter_nearest;
 uniform sampler2D cached_normals : filter_nearest;
-uniform bool depth_available = false;
 uniform bool cache_ready = false;
+#include "res://ocean/shaders/sky_radiance.gdshaderinc"
 
-uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
-uniform sampler2D ocean_depth_mono : filter_nearest;
-uniform sampler2DArray ocean_depth_stereo : filter_nearest;
-uniform bool stereo_depth_enabled = false;
 uniform sampler2D detail_normals : repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D detail_texture : repeat_enable, filter_linear_mipmap_anisotropic;
 uniform vec3 absorption = vec3(0.28, 0.065, 0.028);
@@ -48,28 +44,20 @@ void fragment() {
 	vec3 eye_direction = normalize(CAMERA_POSITION_WORLD - ocean_position);
 	vec3 view_normal = normalize((VIEW_MATRIX * vec4(world_normal, 0.0)).xyz);
 	float thickness = 200.0;
-	vec2 refract_uv = SCREEN_UV;
-	if (depth_available) {
-	vec4 scene_point = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, (stereo_depth_enabled ? texture(ocean_depth_stereo, vec3(SCREEN_UV, float(VIEW_INDEX))).r : texture(ocean_depth_mono, SCREEN_UV).r), 1.0);
-	thickness = max(0.0, -scene_point.z / scene_point.w + VERTEX.z);
-	refract_uv = clamp(SCREEN_UV + view_normal.xy * 0.024 * (1.0 - exp(-thickness * 0.1)), vec2(0.001), vec2(0.999));
-	vec4 refract_point = INV_PROJECTION_MATRIX * vec4(refract_uv * 2.0 - 1.0, (stereo_depth_enabled ? texture(ocean_depth_stereo, vec3(refract_uv, float(VIEW_INDEX))).r : texture(ocean_depth_mono, refract_uv).r), 1.0);
-	if (-refract_point.z / refract_point.w < -VERTEX.z) refract_uv = SCREEN_UV;
-	}
-	vec3 refraction = textureLod(screen_texture, refract_uv, 0.0).rgb;
 	vec3 transmission = exp(-absorption * min(thickness, 200.0));
 	float facing = clamp(dot(world_normal, eye_direction), 0.0, 1.0);
 	float fresnel = 0.02037 + 0.97963 * pow(1.0 - facing, 5.0);
-	float shore = (1.0 - smoothstep(0.15, 1.6, thickness)) * smoothstep(0.32, 0.7, n + small * 0.3);
 	float whitecap = smoothstep(0.10, 0.42, wave_compression) * smoothstep(0.40, 0.77, n + small * 0.22);
-	float foam = clamp(max(shore, whitecap), 0.0, 1.0);
+	float foam = clamp(whitecap, 0.0, 1.0);
 	vec3 scatter = mix(shallow_color, deep_color, 1.0 - exp(-thickness * 0.045));
-	vec3 transmitted = refraction * transmission + scatter * (1.0 - transmission);
+	vec3 transmitted = scatter * (1.0 - transmission);
 	if (!FRONT_FACING) {
 		world_normal = -world_normal;
 		float internal = 1.0 - smoothstep(0.61, 0.69, dot(world_normal, eye_direction));
-		transmitted = mix(refraction, shallow_color * 0.35, internal);
-		fresnel = internal;
+		vec3 ray=refract(-eye_direction,world_normal,1.333);
+		vec3 sky=length(ray)>0.0 ? refracted_sky(normalize(ray)) : shallow_color*0.35;
+		transmitted = mix(sky, shallow_color * 0.35, internal);
+		fresnel = 0.0;
 		foam *= 0.25;
 	}
 	NORMAL = normalize((VIEW_MATRIX * vec4(world_normal, 0.0)).xyz);
@@ -79,5 +67,4 @@ void fragment() {
 	ROUGHNESS = mix(0.055 + (1.0 - facing) * 0.025, 0.65, foam);
 	SPECULAR = 0.25;
 	METALLIC = 0.0;
-	ALPHA = 1.0;
 }

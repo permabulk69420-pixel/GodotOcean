@@ -65,8 +65,9 @@ func run() -> void:
 	var image:=cache.displacement.get_image()
 	var params:=cache.last_parameters.duplicate()
 	var vertices: PackedVector3Array=scene.ocean.surface.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	print("Shared wave samples: ",vertices.size(),"; triangles: ",scene.ocean.surface.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX].size()/3)
 	var maximum_error:=0.0
-	for i in range(0,60000,3000):
+	for i in range(0,16000,1000):
 		var v:=vertices[i]
 		var expected: Vector3=scene.ocean.displacement_at(Vector2(v.x+params[0],v.z+params[1]),params[2])
 		var pixel:=image.get_pixel(i%1024,i/1024)
@@ -74,13 +75,9 @@ func run() -> void:
 	print('Actual cached GPU displacement maximum error: ',maximum_error,' m')
 	check(maximum_error<0.008,'Rendered wave geometry agrees with gameplay queries')
 	var first_time: float=scene.ocean.simulation_time
-	# Exercise refraction failure while the live water continues drawing.
-	scene.depth_active=false
-	scene.ocean.material.set_shader_parameter('depth_available',false)
-	await frames(2)
-	check(scene.ocean.surface.visible,'Depth failure cannot hide the ocean')
-	capture('depth-fallback')
-	scene.depth_active=true
+	var shader_code: String=scene.ocean.material.shader.code
+	check(not 'hint_screen_texture' in shader_code and not 'hint_depth_texture' in shader_code,'Opaque water must not force full-screen color or depth copies')
+	check(scene.world.compositor==null,'The mobile tile pass must not contain compositor breaks')
 	if stereo:
 		check(right!=null and scene.right_controller.get_is_active(),'Tracked controller is active')
 		var initial: Vector3=scene.origin.position

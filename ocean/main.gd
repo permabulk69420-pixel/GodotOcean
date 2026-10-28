@@ -10,8 +10,6 @@ signal submerged_changed(submerged: bool)
 @onready var world: WorldEnvironment = $Environment
 @onready var sun: DirectionalLight3D = $Sun
 
-var depth_capture: AbyssDepthCapture
-var depth_active := true
 var cache_bound := false
 var xr: XRInterface
 var xr_focused := false
@@ -23,11 +21,8 @@ var look := Vector2.ZERO
 
 func _ready() -> void:
 	ocean.observer = camera
-	depth_capture = AbyssDepthCapture.new()
-	# Wave geometry and refraction depth are independent; missing depth cannot hide water.
-	var compositor := Compositor.new()
-	compositor.compositor_effects = [ocean.wave_cache, depth_capture]
-	world.compositor = compositor
+	ocean.wave_cache.start()
+	ocean.material.set_shader_parameter("sky_sun_direction",sun.global_basis.z)
 	surface_environment = world.environment
 	underwater_environment = surface_environment.duplicate(true)
 	underwater_environment.sky = surface_environment.sky
@@ -37,12 +32,11 @@ func _ready() -> void:
 	underwater_environment.fog_sky_affect = 1.0
 	underwater_environment.ambient_light_color = Color(0.06, 0.32, 0.40)
 	underwater_environment.ambient_light_energy = 0.38
-	underwater_environment.volumetric_fog_enabled = true
-	underwater_environment.volumetric_fog_density = 0.012
-	underwater_environment.volumetric_fog_albedo = Color(0.12, 0.42, 0.49)
 	xr = XRServer.find_interface("OpenXR")
 	if xr and (xr.is_initialized() or (OS.has_feature("android") and xr.initialize())):
 		get_viewport().use_xr = true
+		var rates = xr.get_available_display_refresh_rates()
+		if rates.has(120.0): xr.set_display_refresh_rate(120.0)
 		connect_xr_lifecycle(xr)
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	elif OS.has_feature("android"):
@@ -75,15 +69,6 @@ func _process(delta: float) -> void:
 		ocean.material.set_shader_parameter("cached_normals",ocean.wave_cache.normals)
 		ocean.material.set_shader_parameter("cache_ready",true)
 		cache_bound=true
-	if not depth_active or not depth_capture.depth_rid.is_valid():
-		ocean.material.set_shader_parameter("depth_available",false)
-		return
-	var texture: Texture = depth_capture.stereo_depth if depth_capture.stereo_mode else depth_capture.mono_depth
-	if not texture.get_rid().is_valid(): return
-	var parameter := "ocean_depth_stereo" if depth_capture.stereo_mode else "ocean_depth_mono"
-	ocean.material.set_shader_parameter(parameter, texture)
-	ocean.material.set_shader_parameter("stereo_depth_enabled", depth_capture.stereo_mode)
-	ocean.material.set_shader_parameter("depth_available", true)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if get_viewport().use_xr: return
@@ -125,16 +110,8 @@ func update_water_state() -> void:
 	if not is_equal_approx(sun.light_energy,energy): sun.light_energy=energy
 
 func release_depth() -> void:
-	depth_active = false
 	if is_instance_valid(ocean) and ocean.wave_cache: ocean.wave_cache.release()
-	if is_instance_valid(ocean) and is_instance_valid(ocean.surface):
-		ocean.surface.hide()
-		ocean.material.set_shader_parameter("ocean_depth_mono", null)
-		ocean.material.set_shader_parameter("ocean_depth_stereo", null)
-	if is_instance_valid(world): world.compositor = null
-	if depth_capture:
-		depth_capture.mono_depth.texture_rd_rid = RID()
-		depth_capture.stereo_depth.texture_rd_rid = RID()
+	if is_instance_valid(ocean) and is_instance_valid(ocean.surface): ocean.surface.hide()
 
 func _exit_tree() -> void:
 	release_depth()

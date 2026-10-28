@@ -10,7 +10,7 @@ void main() {
  uint id=gl_GlobalInvocationID.x;
  if(id>=uint(params.data.w)) return;
  vec2 position=points[id].xy+params.data.xy;
- float spacing=max(0.25,max(abs(points[id].x),abs(points[id].y))/128.0);
+ float spacing=max(0.25,max(abs(points[id].x),abs(points[id].y))/64.0);
  vec3 d=vec3(0),tx=vec3(1,0,0),tz=vec3(0,0,1);
  for(int i=0;i<64;i++) {
   vec4 w=waves[i*2]; vec4 p=waves[i*2+1];

@@ -171,13 +171,13 @@ func _build_clipmap() -> ArrayMesh:
 	var normals := PackedVector3Array()
 	var indices := PackedInt32Array()
 	var lookup := {}
-	# Eight stitched square levels: 25 cm near the player, extending to 4 km.
-	for level in range(8):
+	# Pixel-sized distant geometry; retain 25 cm spacing next to the player and 4 km coverage.
+	for level in range(9):
 		var step := 0.25 * pow(2.0, level)
-		var half := 128.0 * step
+		var half := 64.0 * step
 		var inner := half * 0.5
-		for z in range(256):
-			for x in range(256):
+		for z in range(128):
+			for x in range(128):
 				var p := Vector2(x * step - half, z * step - half)
 				if level > 0 and p.x >= -inner and p.x < inner and p.y >= -inner and p.y < inner: continue
 				var polygon: Array[Vector2] = [p, p + Vector2(0, step), p + Vector2(step, step), p + Vector2(step, 0)]

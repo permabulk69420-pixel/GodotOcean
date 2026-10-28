@@ -1,6 +1,6 @@
 class_name AbyssWaveCache
-extends CompositorEffect
-## Calculate the displaced mesh once for both eyes, before transparent water draws.
+extends RefCounted
+## Update shared wave textures before the mobile renderer opens its tile render pass.
 var displacement := Texture2DRD.new()
 var normals := Texture2DRD.new()
 var points := PackedByteArray()
@@ -14,9 +14,14 @@ var uniform_set := RID()
 var outputs: Array[RID] = []
 var ready := false
 var last_parameters := PackedFloat32Array()
-func _init() -> void:
-	effect_callback_type = EFFECT_CALLBACK_TYPE_PRE_TRANSPARENT
-func _render_callback(_type: int, _data: RenderData) -> void:
+var active := false
+func start() -> void:
+	active=true
+	RenderingServer.frame_pre_draw.connect(_queue_update)
+func _queue_update() -> void:
+	RenderingServer.call_on_render_thread(_update)
+func _update() -> void:
+	if not active: return
 	if not ready: _allocate()
 	if not ready: return
 	var list := rd.compute_list_begin()
@@ -63,7 +68,8 @@ func _allocate() -> void:
 	normals.texture_rd_rid=outputs[1]
 	ready=true
 func release() -> void:
-	enabled=false
+	active=false
+	if RenderingServer.frame_pre_draw.is_connected(_queue_update): RenderingServer.frame_pre_draw.disconnect(_queue_update)
 	RenderingServer.call_on_render_thread(_free)
 func _free() -> void:
 	displacement.texture_rd_rid=RID()
