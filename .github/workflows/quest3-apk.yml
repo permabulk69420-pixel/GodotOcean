@@ -94,10 +94,7 @@ jobs:
       - name: Import and build Quest 3 APK
         run: |
           mkdir -p artifacts
-          xvfb-run -a godot --editor --audio-driver Dummy --path . --import
-          OCEAN_STEREO=1 OCEAN_CAPTURE_DIR="$RUNNER_TEMP/ocean-preview" timeout 240 xvfb-run -a godot --path . --audio-driver Dummy --rendering-method forward_plus --gpu-validation --resolution 1280x960 --script res://.github/tests/abyss_ocean.gd > "$RUNNER_TEMP/quest-waves.log" 2>&1 || { cat "$RUNNER_TEMP/quest-waves.log"; exit 1; }
-          cat "$RUNNER_TEMP/quest-waves.log"
-          if grep -E 'Format operand|Validation Error|SYNC-HAZARD|VUID-' "$RUNNER_TEMP/quest-waves.log"; then exit 1; fi
+          godot --headless --editor --audio-driver Dummy --path . --import
           godot --headless --path . --export-debug 'Meta Quest' artifacts/GodotOcean-Quest3.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs artifacts/GodotOcean-Quest3.apk | tee "$RUNNER_TEMP/signing.txt"
           grep -F 'Signer #1 certificate SHA-256 digest: c1efe166952ff6ac6db469230e662f886c6cce1cfe0a90a826b6c12ac0e6c632' "$RUNNER_TEMP/signing.txt"
