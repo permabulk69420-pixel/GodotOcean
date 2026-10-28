@@ -16,6 +16,8 @@ var phase_data := PackedVector2Array()
 var horizontal_scale := 0.0
 var material: ShaderMaterial
 var surface: MeshInstance3D
+var wave_cache: AbyssWaveCache
+var detail_normal_texture: NoiseTexture2D
 var detail_texture: NoiseTexture2D
 
 func _ready() -> void:
@@ -39,6 +41,15 @@ func _ready() -> void:
 	detail_texture.generate_mipmaps = true
 	detail_texture.noise = noise
 	material.set_shader_parameter("detail_texture", detail_texture)
+	detail_normal_texture = NoiseTexture2D.new()
+	detail_normal_texture.width=1024
+	detail_normal_texture.height=1024
+	detail_normal_texture.seamless=true
+	detail_normal_texture.generate_mipmaps=true
+	detail_normal_texture.noise=noise
+	detail_normal_texture.as_normal_map=true
+	detail_normal_texture.bump_strength=5.5
+	material.set_shader_parameter("detail_normals",detail_normal_texture)
 	surface = MeshInstance3D.new()
 	surface.name = "OceanSurface"
 	surface.mesh = _build_clipmap()
@@ -46,6 +57,18 @@ func _ready() -> void:
 	surface.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	surface.custom_aabb = AABB(Vector3(-4096, -24, -4096), Vector3(8192, 48, 8192))
 	add_child(surface)
+	wave_cache = AbyssWaveCache.new()
+	var vertices: PackedVector3Array = surface.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var packed := PackedFloat32Array()
+	for v in vertices: packed.append_array(PackedFloat32Array([v.x,v.z,0,0]))
+	wave_cache.points=packed.to_byte_array()
+	wave_cache.vertex_count=vertices.size()
+	packed=PackedFloat32Array()
+	for i in range(WAVE_COUNT):
+		var w:=wave_data[i]; var p:=phase_data[i]
+		packed.append_array(PackedFloat32Array([w.x,w.y,w.z,w.w,p.x,p.y,horizontal_scale,0]))
+	wave_cache.spectrum=packed.to_byte_array()
+
 
 func build_spectrum() -> void:
 	wave_data.clear()
@@ -96,6 +119,7 @@ func _process(delta: float) -> void:
 	if observer:
 		var p := observer.global_position
 		surface.global_position = Vector3(snappedf(p.x, 0.25), sea_level, snappedf(p.z, 0.25))
+	wave_cache.parameters=PackedFloat32Array([surface.global_position.x,surface.global_position.z,simulation_time,float(wave_cache.vertex_count)])
 
 func displacement_at(parameter: Vector2, at_time: float = -1.0) -> Vector3:
 	var t := simulation_time if at_time < 0.0 else at_time
@@ -115,6 +139,8 @@ func sample_surface(world_position: Vector3, at_time: float = -1.0) -> Dictionar
 	# Newton inversion finds the surface at a world XZ position after choppy displacement.
 	for iteration in range(6):
 		var d := displacement_at(parameter, t)
+		var error := parameter + Vector2(d.x, d.z) - target
+		if error.length_squared() < 0.00000001: break
 		var a := 1.0; var b := 0.0; var c := 1.0
 		for i in range(WAVE_COUNT):
 			var w := wave_data[i]; var p := phase_data[i]
@@ -123,7 +149,6 @@ func sample_surface(world_position: Vector3, at_time: float = -1.0) -> Dictionar
 			a -= slope * w.x * w.x
 			b -= slope * w.x * w.y
 			c -= slope * w.y * w.y
-		var error := parameter + Vector2(d.x, d.z) - target
 		var determinant := maxf(a * c - b * b, 0.001)
 		parameter -= Vector2(c * error.x - b * error.y, a * error.y - b * error.x) / determinant
 	var tangent_x := Vector3.RIGHT

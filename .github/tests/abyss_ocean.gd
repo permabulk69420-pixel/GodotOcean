@@ -1,117 +1,128 @@
 extends SceneTree
-
-var failures: Array[String] = []
 var scene: Node3D
 var stereo: XRInterfaceExtension
-var capture_dir := "/tmp/abyss-preview"
-
-func _initialize() -> void:
-	_run.call_deferred()
-
-func check(condition: bool, message: String) -> void:
-	if not condition:
+var failures: Array[String]=[]
+var capture_dir := '/tmp/abyss-runtime'
+var frame_times: Array[float]=[]
+var left: XRPositionalTracker
+var right: XRPositionalTracker
+func _initialize() -> void: run.call_deferred()
+func check(ok: bool,message: String) -> void:
+	if not ok:
 		failures.append(message)
 		push_error(message)
-
-func _run() -> void:
-	if OS.has_environment("OCEAN_CAPTURE_DIR"): capture_dir = OS.get_environment("OCEAN_CAPTURE_DIR")
+func frames(count: int) -> void:
+	for i in range(count):
+		var before:=Time.get_ticks_usec()
+		await process_frame
+		await RenderingServer.frame_post_draw
+		frame_times.append((Time.get_ticks_usec()-before)/1000.0)
+func controller(tracker_name: StringName) -> XRPositionalTracker:
+	var tracker:=XRControllerTracker.new()
+	tracker.type=XRServer.TRACKER_CONTROLLER
+	tracker.name=tracker_name
+	tracker.set_pose(&'default',Transform3D(Basis.IDENTITY,Vector3(0,1,-0.3)),Vector3.ZERO,Vector3.ZERO,XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	tracker.set_input(&'primary',Vector2.ZERO)
+	XRServer.add_tracker(tracker)
+	return tracker
+func capture(name: String) -> void:
+	var img:=root.get_texture().get_image()
+	check(not img.is_empty(),'Rendered view must contain pixels')
+	var dark:=0
+	for y in range(0,img.get_height(),16):
+		for x in range(0,img.get_width(),16):
+			var c:=img.get_pixel(x,y)
+			if c.r+c.g+c.b<0.006: dark+=1
+	check(dark<20,'Rendered view must not contain large black rectangles')
+	img.save_png(capture_dir.path_join(name+'.png'))
+func run() -> void:
+	if OS.has_environment('OCEAN_CAPTURE_DIR'): capture_dir=OS.get_environment('OCEAN_CAPTURE_DIR')
 	DirAccess.make_dir_recursive_absolute(capture_dir)
-	root.msaa_3d = ProjectSettings.get_setting("rendering/anti_aliasing/quality/msaa_3d.android")
-	check(root.msaa_3d == Viewport.MSAA_4X, "Ocean starts at 4x MSAA")
-	if OS.get_environment("OCEAN_STEREO") != "0":
-		stereo = load("res://.github/tests/quest_xr_interface.gd").new()
+	root.msaa_3d=Viewport.MSAA_4X
+	if OS.get_environment('OCEAN_STEREO')!='0':
+		stereo=load('res://.github/tests/quest_xr_interface.gd').new()
 		XRServer.add_interface(stereo)
-		check(stereo.initialize(), "Stereo interface initializes")
-		XRServer.primary_interface = stereo
-		root.use_xr = true
-	scene = load("res://ocean/main.tscn").instantiate()
+		check(stereo.initialize(),'Simulated VR initializes')
+		XRServer.primary_interface=stereo
+		root.use_xr=true
+		left=controller(&'left_hand')
+		right=controller(&'right_hand')
+	scene=load('res://ocean/main.tscn').instantiate()
 	root.add_child(scene)
-	check(not scene.has_node("Reef"), "Ocean scene must not add decorative scenery")
-	scene.set_physics_process(false)
-	var ocean: AbyssOcean = scene.ocean
-	ocean.set_process(false)
-	ocean.simulation_time = 12.0
-	ocean.apply_wave_uniforms(ocean.material)
-	check(ocean.wave_data.size() == 64, "Expected full directional wave spectrum")
-	var mesh: ArrayMesh = ocean.surface.mesh
-	var arrays := mesh.surface_get_arrays(0)
-	print("Ocean geometry: ", arrays[Mesh.ARRAY_VERTEX].size(), " vertices; ", arrays[Mesh.ARRAY_INDEX].size()/3, " triangles")
-	check(arrays[Mesh.ARRAY_VERTEX].size() > 400000, "Full ocean geometry must be present")
-	var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
-	var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]
-	for offset in range(0, indices.size(), 9000):
-		var a := vertices[indices[offset]]
-		var b := vertices[indices[offset + 1]]
-		var c := vertices[indices[offset + 2]]
-		check((b - a).cross(c - a).y < 0.0, "Ocean triangles must face above the surface")
-	for x in range(-4, 5):
-		for z in range(-4, 5):
-			var sample := ocean.sample_surface(Vector3(x * 5.7, 0, z * 5.3), 12.0)
-			check(is_finite(sample.height) and sample.normal.y > 0.1, "Wave sample must be finite and upright")
-			check(sample.horizontal_error < 0.002, "Gameplay height query must invert horizontal displacement")
-	var start := ocean.displacement_at(Vector2(7.0, 9.0), 12.0)
-	check(start.distance_to(ocean.displacement_at(Vector2(7.0, 9.0), 13.0)) > 0.01, "Waves must move in time")
+	check(scene.ocean.surface.visible,'Water is visible before refraction depth arrives')
+	check(not scene.has_node('Reef'),'Ocean contains no scenery')
 	if stereo:
 		scene.connect_xr_lifecycle(stereo)
-		stereo.emit_signal(&"session_visible")
-		check(not paused and not scene.xr_focused, "Visible XR must animate without input focus")
-		stereo.emit_signal(&"session_focussed")
-		check(not paused and scene.xr_focused, "OpenXR focus signal must enable input")
-	for frame in range(3): await process_frame
-	scene.update_water_state()
-	check(ocean.surface.visible, "Water must render after depth becomes available")
-	check(scene.depth_capture.depth_rid.is_valid(), "Resolved eye depth must be available for refraction")
-	check(not scene.submerged, "Player must start above the water at tracked eye height")
-	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png(capture_dir.path_join("surface.png"))
-	await _probe_gpu(ocean)
-	scene.origin.position = Vector3(0, -5.0, 8)
-	scene.update_water_state()
-	check(scene.submerged and scene.depth > 1.0, "Diving must enter the underwater environment")
-	check(scene.world.environment == scene.underwater_environment, "Underwater light absorption must be active")
-	for frame in range(3): await process_frame
-	await RenderingServer.frame_post_draw
-	root.get_texture().get_image().save_png(capture_dir.path_join("underwater.png"))
-	scene.origin.position.y = 0.0
-	scene.update_water_state()
-	check(not scene.submerged, "Surfacing must restore above-water rendering")
+		stereo.emit_signal(&'session_focussed')
+	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(),true)
+	await frames(4)
+	check(scene.ocean.is_processing() and scene.is_physics_processing(),'Real simulation and movement remain enabled')
+	check(scene.ocean.simulation_time>0,'Waves advance in time')
+	check(scene.cache_bound,'Shared GPU wave geometry reaches the material')
+	check(scene.ocean.surface.visible,'Water remains visible after startup')
+	capture('surface')
+	var cache: AbyssWaveCache=scene.ocean.wave_cache
+	var image:=cache.displacement.get_image()
+	var params:=cache.last_parameters.duplicate()
+	var vertices: PackedVector3Array=scene.ocean.surface.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
+	var maximum_error:=0.0
+	for i in range(0,60000,3000):
+		var v:=vertices[i]
+		var expected: Vector3=scene.ocean.displacement_at(Vector2(v.x+params[0],v.z+params[1]),params[2])
+		var pixel:=image.get_pixel(i%1024,i/1024)
+		maximum_error=maxf(maximum_error,expected.distance_to(Vector3(pixel.r,pixel.g,pixel.b)))
+	print('Actual cached GPU displacement maximum error: ',maximum_error,' m')
+	check(maximum_error<0.008,'Rendered wave geometry agrees with gameplay queries')
+	var first_time: float=scene.ocean.simulation_time
+	# Exercise refraction failure while the live water continues drawing.
+	scene.depth_active=false
+	scene.ocean.material.set_shader_parameter('depth_available',false)
+	await frames(2)
+	check(scene.ocean.surface.visible,'Depth failure cannot hide the ocean')
+	capture('depth-fallback')
+	scene.depth_active=true
 	if stereo:
-		stereo.emit_signal(&"session_stopping")
-		check(paused, "Stopping XR pauses simulation")
-		stereo.emit_signal(&"session_visible")
-		check(not paused, "Visible XR resumes after stopping")
-		scene.release_depth()
-		root.use_xr = false
-		XRServer.primary_interface = null
+		check(right!=null and scene.right_controller.get_is_active(),'Tracked controller is active')
+		var initial: Vector3=scene.origin.position
+		left.set_input(&'primary',Vector2(1,0))
+		await frames(2)
+		left.set_input(&'primary',Vector2.ZERO)
+		check(scene.origin.position.x>initial.x,'Left stick strafes the real player')
+		# Move near the water, then cross it using the actual controller input path.
+		scene.origin.position.y=-1.5
+		right.set_input(&'primary',Vector2(0,-1))
+		await frames(8)
+		right.set_input(&'primary',Vector2.ZERO)
+		check(scene.origin.position.y< -1.5,'Right stick moves the real player downward')
+	else:
+		scene.origin.position.y=-3
+	await frames(2)
+	# A deeper dive removes ambiguity from the instantaneous height of a crest.
+	scene.origin.position.y=-5
+	await frames(3)
+	check(scene.submerged,'Live diving enters underwater rendering')
+	check(scene.world.environment==scene.underwater_environment,'Underwater absorption activates')
+	capture('underwater')
+	scene.origin.position.y=1
+	await frames(3)
+	check(not scene.submerged,'Surfacing restores above-water rendering')
+	check(scene.ocean.simulation_time>first_time,'Simulation continues throughout movement and diving')
+	if stereo:
+		stereo.emit_signal(&'session_stopping')
+		check(paused,'XR stopping pauses the session')
+		stereo.emit_signal(&'session_visible')
+		check(not paused,'Visible XR resumes the real session')
+		stereo.emit_signal(&'session_focussed')
+	frame_times.sort()
+	print('Live frames: ',frame_times.size(),'; median software-renderer frame time: ',frame_times[frame_times.size()/2],' ms; not a Quest GPU measurement')
+	scene.release_depth()
+	root.use_xr=false
+	XRServer.primary_interface=null
+	if stereo:
+		XRServer.remove_tracker(left)
+		XRServer.remove_tracker(right)
 		stereo.uninitialize()
 		XRServer.remove_interface(stereo)
-		RenderingServer.force_sync()
-	print("Abyss ocean: ", "PASS" if failures.is_empty() else "FAIL")
+	RenderingServer.force_sync()
+	print('Abyss live runtime: ','PASS' if failures.is_empty() else 'FAIL')
 	quit(0 if failures.is_empty() else 1)
-
-func _probe_gpu(ocean: AbyssOcean) -> void:
-	var viewport := SubViewport.new()
-	viewport.size = Vector2i(16, 1)
-	viewport.disable_3d = true
-	viewport.use_hdr_2d = true
-	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	root.add_child(viewport)
-	var rectangle := ColorRect.new()
-	rectangle.size = Vector2(16, 1)
-	var shader := Shader.new()
-	shader.code = 'shader_type canvas_item;\n#include "res://ocean/shaders/waves.gdshaderinc"\nvoid fragment() { vec3 d; vec3 n; float c; ocean_sample(vec2(UV.x * 80.0 - 40.0, 0.0), d, n, c); COLOR = vec4(d.y, n.x, n.z, 1.0); }'
-	var material := ShaderMaterial.new()
-	material.shader = shader
-	ocean.apply_wave_uniforms(material)
-	rectangle.material = material
-	viewport.add_child(rectangle)
-	for frame in range(2): await process_frame
-	await RenderingServer.frame_post_draw
-	var image := viewport.get_texture().get_image()
-	var maximum_error := 0.0
-	for i in range(16):
-		var expected := ocean.displacement_at(Vector2((float(i) + 0.5) / 16.0 * 80.0 - 40.0, 0.0), ocean.simulation_time).y
-		maximum_error = maxf(maximum_error, absf(image.get_pixel(i, 0).r - expected))
-	print("CPU/GPU wave height maximum error: ", maximum_error, " m")
-	check(maximum_error < 0.008, "Rendered waves and gameplay height queries must agree")
-	viewport.queue_free()

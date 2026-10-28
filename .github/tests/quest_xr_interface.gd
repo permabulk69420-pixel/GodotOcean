@@ -14,7 +14,9 @@ func _initialize() -> bool: active = true; return true
 func _uninitialize() -> void: active = false
 func _is_initialized() -> bool: return active
 func _get_view_count() -> int: return 2
-func _get_render_target_size() -> Vector2: return Vector2(960, 960)
+func _get_render_target_size() -> Vector2:
+	var size := int(OS.get_environment("OCEAN_TEST_EYE_SIZE")) if OS.has_environment("OCEAN_TEST_EYE_SIZE") else 960
+	return Vector2(size,size)
 func _get_camera_transform() -> Transform3D: return XRServer.get_reference_frame() * head
 
 func _get_transform_for_view(view: int, world_origin: Transform3D) -> Transform3D:

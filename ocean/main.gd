@@ -12,6 +12,7 @@ signal submerged_changed(submerged: bool)
 
 var depth_capture: AbyssDepthCapture
 var depth_active := true
+var cache_bound := false
 var xr: XRInterface
 var xr_focused := false
 var submerged := false
@@ -23,13 +24,13 @@ var look := Vector2.ZERO
 func _ready() -> void:
 	ocean.observer = camera
 	depth_capture = AbyssDepthCapture.new()
-	# Wait for the first resolved depth texture before drawing refractive water.
-	ocean.surface.hide()
+	# Wave geometry and refraction depth are independent; missing depth cannot hide water.
 	var compositor := Compositor.new()
-	compositor.compositor_effects = [depth_capture]
+	compositor.compositor_effects = [ocean.wave_cache, depth_capture]
 	world.compositor = compositor
 	surface_environment = world.environment
 	underwater_environment = surface_environment.duplicate(true)
+	underwater_environment.sky = surface_environment.sky
 	underwater_environment.fog_enabled = true
 	underwater_environment.fog_light_color = Color(0.018, 0.22, 0.29)
 	underwater_environment.fog_density = 0.026
@@ -69,14 +70,20 @@ func _on_stopping() -> void:
 	get_tree().paused = true
 
 func _process(delta: float) -> void:
-	if not depth_active or not depth_capture.depth_rid.is_valid(): return
+	if not cache_bound and ocean.wave_cache.ready:
+		ocean.material.set_shader_parameter("cached_displacement",ocean.wave_cache.displacement)
+		ocean.material.set_shader_parameter("cached_normals",ocean.wave_cache.normals)
+		ocean.material.set_shader_parameter("cache_ready",true)
+		cache_bound=true
+	if not depth_active or not depth_capture.depth_rid.is_valid():
+		ocean.material.set_shader_parameter("depth_available",false)
+		return
 	var texture: Texture = depth_capture.stereo_depth if depth_capture.stereo_mode else depth_capture.mono_depth
 	if not texture.get_rid().is_valid(): return
-	if not ocean.surface.visible:
-		var parameter := "ocean_depth_stereo" if depth_capture.stereo_mode else "ocean_depth_mono"
-		ocean.material.set_shader_parameter(parameter, texture)
-		ocean.material.set_shader_parameter("stereo_depth_enabled", depth_capture.stereo_mode)
-		ocean.surface.show()
+	var parameter := "ocean_depth_stereo" if depth_capture.stereo_mode else "ocean_depth_mono"
+	ocean.material.set_shader_parameter(parameter, texture)
+	ocean.material.set_shader_parameter("stereo_depth_enabled", depth_capture.stereo_mode)
+	ocean.material.set_shader_parameter("depth_available", true)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if get_viewport().use_xr: return
@@ -114,13 +121,12 @@ func update_water_state() -> void:
 		submerged = next
 		world.environment = underwater_environment if submerged else surface_environment
 		submerged_changed.emit(submerged)
-	if submerged:
-		sun.light_energy = 1.6 * exp(-maxf(depth, 0.0) * 0.045)
-	else:
-		sun.light_energy = 1.6
+	var energy := 1.6 * exp(-maxf(depth, 0.0) * 0.045) if submerged else 1.6
+	if not is_equal_approx(sun.light_energy,energy): sun.light_energy=energy
 
 func release_depth() -> void:
 	depth_active = false
+	if is_instance_valid(ocean) and ocean.wave_cache: ocean.wave_cache.release()
 	if is_instance_valid(ocean) and is_instance_valid(ocean.surface):
 		ocean.surface.hide()
 		ocean.material.set_shader_parameter("ocean_depth_mono", null)

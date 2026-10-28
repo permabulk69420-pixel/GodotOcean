@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   apk:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       GODOT_VERSION: '4.6.3'
@@ -33,6 +33,12 @@ jobs:
         with:
           path: ${{ runner.temp }}/debug.keystore
           key: abyss-ocean-signing-v1
+
+      - name: Require this app's existing signing key
+        if: steps.signing-key.outputs.cache-hit != 'true'
+        run: |
+          echo '::error::The Abyss Ocean signing key is missing; refusing to publish an incompatible update.'
+          exit 1
 
       - name: Install Android and Vulkan build tools
         run: |
@@ -81,6 +87,9 @@ jobs:
         run: |
           mkdir -p artifacts
           godot --headless --editor --audio-driver Dummy --path . --import
+          OCEAN_TEST_EYE_SIZE=320 OCEAN_STEREO=1 OCEAN_CAPTURE_DIR="$RUNNER_TEMP/ocean-runtime" timeout 300 xvfb-run -a godot --path . --audio-driver Dummy --rendering-method forward_plus --gpu-validation --fixed-fps 60 --resolution 1280x960 --script res://.github/tests/abyss_ocean.gd > "$RUNNER_TEMP/ocean-runtime.log" 2>&1 || { cat "$RUNNER_TEMP/ocean-runtime.log"; exit 1; }
+          cat "$RUNNER_TEMP/ocean-runtime.log"
+          if grep -E 'SCRIPT ERROR|ERROR:|Validation Error|VUID-|SYNC-HAZARD' "$RUNNER_TEMP/ocean-runtime.log"; then exit 1; fi
           godot --headless --path . --export-debug 'Meta Quest' artifacts/AbyssOcean-Quest3.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs artifacts/AbyssOcean-Quest3.apk | tee "$RUNNER_TEMP/signing.txt"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree artifacts/AbyssOcean-Quest3.apk AndroidManifest.xml > "$RUNNER_TEMP/manifest.txt"

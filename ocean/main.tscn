@@ -11,6 +11,7 @@ ground_color = Color(0.12, 0.16, 0.18, 1)
 sun_disk_scale = 1.0
 
 [sub_resource type="Sky" id="Sky"]
+process_mode = 1
 radiance_size = 4
 sky_material = SubResource("Atmosphere")
 
@@ -44,6 +45,7 @@ environment = SubResource("SurfaceEnvironment")
 rotation_degrees = Vector3(-32, 155, 0)
 light_color = Color(1, 0.95, 0.85, 1)
 light_energy = 1.6
+sky_mode = 1
 shadow_enabled = true
 directional_shadow_max_distance = 240.0
 shadow_blur = 1.0
@@ -65,3 +67,9 @@ tracker = &"left_hand"
 
 [node name="RightHand" type="XRController3D" parent="Player"]
 tracker = &"right_hand"
+
+[node name="SkySun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-32, 155, 0)
+light_color = Color(1, 0.95, 0.85, 1)
+light_energy = 1.6
+sky_mode = 2

@@ -1,11 +1,16 @@
 shader_type spatial;
 render_mode world_vertex_coords, cull_disabled, depth_draw_opaque;
-#include "res://ocean/shaders/waves.gdshaderinc"
+uniform float simulation_time;
+uniform sampler2D cached_displacement : filter_nearest;
+uniform sampler2D cached_normals : filter_nearest;
+uniform bool depth_available = false;
+uniform bool cache_ready = false;
 
 uniform sampler2D screen_texture : hint_screen_texture, filter_linear_mipmap;
 uniform sampler2D ocean_depth_mono : filter_nearest;
 uniform sampler2DArray ocean_depth_stereo : filter_nearest;
 uniform bool stereo_depth_enabled = false;
+uniform sampler2D detail_normals : repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D detail_texture : repeat_enable, filter_linear_mipmap_anisotropic;
 uniform vec3 absorption = vec3(0.28, 0.065, 0.028);
 uniform vec3 deep_color : source_color = vec3(0.008, 0.055, 0.085);
@@ -17,8 +22,10 @@ varying float wave_compression;
 varying float crest_height;
 
 void vertex() {
-	vec3 displacement; vec3 wave_normal; float compression;
-	ocean_sample(VERTEX.xz, displacement, wave_normal, compression);
+	ivec2 cache_pixel = ivec2(VERTEX_ID % 1024, VERTEX_ID / 1024);
+	vec3 displacement = cache_ready ? texelFetch(cached_displacement, cache_pixel, 0).xyz : vec3(0.0);
+	vec4 cached = cache_ready ? texelFetch(cached_normals, cache_pixel, 0) : vec4(0.0, 1.0, 0.0, 0.0);
+	vec3 wave_normal = cached.xyz; float compression = cached.w;
 	VERTEX += displacement;
 	ocean_position = VERTEX;
 	ocean_normal = wave_normal;
@@ -35,18 +42,20 @@ void fragment() {
 	vec2 q = uv * 0.31 + vec2(-t * 0.012, t * 0.008);
 	float n = texture(detail_texture, p).r;
 	float small = texture(detail_texture, q).r;
-	vec2 gradient = vec2(texture(detail_texture, p + vec2(texel.x, 0)).r - texture(detail_texture, p - vec2(texel.x, 0)).r,
-		texture(detail_texture, p + vec2(0, texel.y)).r - texture(detail_texture, p - vec2(0, texel.y)).r);
-	vec2 fine = vec2(texture(detail_texture, q + vec2(texel.x, 0)).r - texture(detail_texture, q - vec2(texel.x, 0)).r,
-		texture(detail_texture, q + vec2(0, texel.y)).r - texture(detail_texture, q - vec2(0, texel.y)).r);
-	vec3 world_normal = normalize(ocean_normal + vec3(-gradient.x * 5.5 - fine.x * 1.5, 0.0, -gradient.y * 5.5 - fine.y * 1.5));
+	vec2 gradient=texture(detail_normals,p).rg*2.0-1.0;
+	vec2 fine=texture(detail_normals,q).rg*2.0-1.0;
+	vec3 world_normal=normalize(ocean_normal+vec3(gradient.x+fine.x*0.2727,0.0,gradient.y+fine.y*0.2727));
 	vec3 eye_direction = normalize(CAMERA_POSITION_WORLD - ocean_position);
 	vec3 view_normal = normalize((VIEW_MATRIX * vec4(world_normal, 0.0)).xyz);
+	float thickness = 200.0;
+	vec2 refract_uv = SCREEN_UV;
+	if (depth_available) {
 	vec4 scene_point = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, (stereo_depth_enabled ? texture(ocean_depth_stereo, vec3(SCREEN_UV, float(VIEW_INDEX))).r : texture(ocean_depth_mono, SCREEN_UV).r), 1.0);
-	float thickness = max(0.0, -scene_point.z / scene_point.w + VERTEX.z);
-	vec2 refract_uv = clamp(SCREEN_UV + view_normal.xy * 0.024 * (1.0 - exp(-thickness * 0.1)), vec2(0.001), vec2(0.999));
+	thickness = max(0.0, -scene_point.z / scene_point.w + VERTEX.z);
+	refract_uv = clamp(SCREEN_UV + view_normal.xy * 0.024 * (1.0 - exp(-thickness * 0.1)), vec2(0.001), vec2(0.999));
 	vec4 refract_point = INV_PROJECTION_MATRIX * vec4(refract_uv * 2.0 - 1.0, (stereo_depth_enabled ? texture(ocean_depth_stereo, vec3(refract_uv, float(VIEW_INDEX))).r : texture(ocean_depth_mono, refract_uv).r), 1.0);
 	if (-refract_point.z / refract_point.w < -VERTEX.z) refract_uv = SCREEN_UV;
+	}
 	vec3 refraction = textureLod(screen_texture, refract_uv, 0.0).rgb;
 	vec3 transmission = exp(-absorption * min(thickness, 200.0));
 	float facing = clamp(dot(world_normal, eye_direction), 0.0, 1.0);
