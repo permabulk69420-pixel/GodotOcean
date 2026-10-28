@@ -2,6 +2,12 @@ name: Quest 3 APK
 
 on:
   workflow_dispatch:
+    inputs:
+      source_ref:
+        description: Ocean source commit or branch to build
+        required: true
+        default: codex/abyss-ocean
+        type: string
 
 concurrency:
   group: quest3-apk
@@ -18,6 +24,12 @@ jobs:
       GODOT_VERSION: '4.6.3'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+
+      - name: Record the source commit
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         with:
@@ -87,7 +99,8 @@ jobs:
           cat "$RUNNER_TEMP/quest-waves.log"
           if grep -E 'Format operand|Validation Error|SYNC-HAZARD|VUID-' "$RUNNER_TEMP/quest-waves.log"; then exit 1; fi
           godot --headless --path . --export-debug 'Meta Quest' artifacts/GodotOcean-Quest3.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose artifacts/GodotOcean-Quest3.apk
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs artifacts/GodotOcean-Quest3.apk | tee "$RUNNER_TEMP/signing.txt"
+          grep -F 'Signer #1 certificate SHA-256 digest: c1efe166952ff6ac6db469230e662f886c6cce1cfe0a90a826b6c12ac0e6c632' "$RUNNER_TEMP/signing.txt"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree artifacts/GodotOcean-Quest3.apk AndroidManifest.xml > "$RUNNER_TEMP/manifest.txt"
           python3 - <<'PY'
           from pathlib import Path
@@ -106,16 +119,19 @@ jobs:
       - name: Replace the current APK download
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           tag=quest3-current
           if gh release view "$tag" > /dev/null 2>&1; then
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$GITHUB_SHA" -F force=true
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$SOURCE_SHA" -F force=true
             gh release upload "$tag" artifacts/GodotOcean-Quest3.apk --clobber
-            gh release edit "$tag" --title 'Quest 3 APK' --notes "Built from $GITHUB_SHA. Physical Quest 3 verification is still required." --latest
+            gh release edit "$tag" --title 'Quest 3 APK' --notes "Built from $SOURCE_SHA. Physical Quest 3 verification is still required." --latest
           else
-            gh release create "$tag" artifacts/GodotOcean-Quest3.apk --target "$GITHUB_SHA" --title 'Quest 3 APK' --notes "Built from $GITHUB_SHA. Physical Quest 3 verification is still required." --latest
+            gh release create "$tag" artifacts/GodotOcean-Quest3.apk --target "$SOURCE_SHA" --title 'Quest 3 APK' --notes "Built from $SOURCE_SHA. Physical Quest 3 verification is still required." --latest
           fi
-          gh release upload "$tag" "$RUNNER_TEMP/ocean-preview/surface.png" "$RUNNER_TEMP/ocean-preview/underwater.png" --clobber
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq '.assets[] | select(.name != "GodotOcean-Quest3.apk") | .id' | while read -r asset_id; do
+            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
+          done
           gh api "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name | startswith("quest3-")) | select(.tag_name != "quest3-current") | .tag_name' | while read -r old_tag; do
             gh release delete "$old_tag" --yes
           done
