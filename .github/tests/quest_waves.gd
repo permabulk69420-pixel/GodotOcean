@@ -1,6 +1,8 @@
 extends SceneTree
 ## Exercise the actual Quest scene and read back its GPU-generated wave maps.
 
+var preview_xr: XRInterfaceExtension
+
 var failures: Array[String] = []
 var scene: Node3D
 var snapshots: Array = []
@@ -15,6 +17,13 @@ func _check(condition: bool, message: String) -> void:
 		push_error(message)
 
 func _run() -> void:
+	if OS.get_environment("QUEST_XR_PREVIEW") == "1":
+		preview_xr = load("res://.github/tests/quest_xr_interface.gd").new()
+		XRServer.add_interface(preview_xr)
+		_check(preview_xr.initialize(), "Could not initialize stereo preview")
+		XRServer.primary_interface = preview_xr
+		root.use_xr = true
+		_check(preview_xr.get_view_count() == 2, "Preview must render both XR eyes")
 	root.msaa_3d = ProjectSettings.get_setting("rendering/anti_aliasing/quality/msaa_3d.android")
 	# Round-trip the scene to binary so startup uses exported property ordering.
 	var source: Node3D = load("res://quest/main.tscn").instantiate()
@@ -30,8 +39,21 @@ func _run() -> void:
 	_check(scene.get_node("Water").wave_generator.map_size == 256,
 		"Compiled Quest scene must initialize the 256-wide wave generator")
 	var camera: XRCamera3D = scene.get_node("XROrigin3D/XRCamera3D")
-	_check(camera.global_position.y >= 0.5 and camera.global_position.y <= 3.0,
-		"Quest eye height must be near the ocean, got %.2f m" % camera.global_position.y)
+	_check(is_equal_approx(scene.get_node("XROrigin3D").position.y, 0.0) and is_equal_approx(camera.global_position.y, 1.6),
+		"Quest rig must add no height above tracked eyes, got %.2f m" % camera.global_position.y)
+	# The visible state can precede focus or persist while an XR overlay is open.
+	# The ocean must animate in this state; controller input can remain disabled.
+	var native_xr := XRServer.find_interface("OpenXR")
+	_check(native_xr != null and native_xr.has_signal(&"session_focussed"),
+		"Godot's OpenXR focus signal must be session_focussed")
+	if not preview_xr:
+		preview_xr = load("res://.github/tests/quest_xr_interface.gd").new()
+	scene._connect_xr_signals(preview_xr)
+	_check(preview_xr.is_connected(&"session_focussed", scene._on_session_focused),
+		"The real XR focus handler was not connected")
+	preview_xr.emit_signal(&"session_visible")
+	_check(not paused and not scene.xr_has_focus, "Visible water must animate without controller focus")
+	print("XR visible: paused=", paused, "; eye height=", camera.global_position.y, " m")
 	for frame in range(12):
 		await process_frame
 	if not await _capture():
@@ -69,6 +91,18 @@ func _run() -> void:
 	await RenderingServer.frame_post_draw
 	var image := root.get_texture().get_image()
 	image.save_png(OS.get_environment("QUEST_CAPTURE") if OS.has_environment("QUEST_CAPTURE") else "/tmp/quest-waves.png")
+	preview_xr.emit_signal(&"session_focussed")
+	_check(not paused and scene.xr_has_focus, "Focused XR must enable input and animation")
+	preview_xr.emit_signal(&"session_stopping")
+	_check(paused and not scene.xr_has_focus, "Stopping XR must pause and disable input")
+	preview_xr.emit_signal(&"session_visible")
+	_check(not paused and not scene.xr_has_focus, "Visible XR must resume after stopping")
+	if root.use_xr:
+		root.use_xr = false
+		XRServer.primary_interface = null
+		preview_xr.uninitialize()
+		XRServer.remove_interface(preview_xr)
+		RenderingServer.force_sync()
 	print("Quest wave check: %s" % ("PASS" if failures.is_empty() else "FAIL"))
 	quit(0 if failures.is_empty() else 1)
 

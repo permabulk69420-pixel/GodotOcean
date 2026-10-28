@@ -17,6 +17,10 @@ on:
       - '.github/workflows/quest3-apk.yml'
   workflow_dispatch:
 
+concurrency:
+  group: quest3-apk
+  cancel-in-progress: true
+
 permissions:
   contents: write
 
@@ -93,9 +97,11 @@ jobs:
         run: |
           mkdir -p artifacts
           xvfb-run -a godot --editor --audio-driver Dummy --path . --import
-          QUEST_CAPTURE="$RUNNER_TEMP/quest-waves.png" timeout 90 xvfb-run -a godot --path . --audio-driver Dummy --rendering-method mobile --gpu-validation --resolution 960x540 --script res://.github/tests/quest_waves.gd > "$RUNNER_TEMP/quest-waves.log" 2>&1 || { cat "$RUNNER_TEMP/quest-waves.log"; exit 1; }
+          godot --headless --path . --script res://.github/tests/quest_preview_settings.gd
+          QUEST_XR_PREVIEW=1 QUEST_CAPTURE="$RUNNER_TEMP/quest-waves.png" timeout 90 xvfb-run -a godot --path . --audio-driver Dummy --rendering-method mobile --gpu-validation --resolution 960x540 --script res://.github/tests/quest_waves.gd > "$RUNNER_TEMP/quest-waves.log" 2>&1 || { cat "$RUNNER_TEMP/quest-waves.log"; exit 1; }
           cat "$RUNNER_TEMP/quest-waves.log"
           if grep -E 'Format operand|Validation Error|SYNC-HAZARD|VUID-' "$RUNNER_TEMP/quest-waves.log"; then exit 1; fi
+          rm override.cfg
           godot --headless --path . --export-debug 'Meta Quest' artifacts/GodotOcean-Quest3.apk
           "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose artifacts/GodotOcean-Quest3.apk
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump xmltree artifacts/GodotOcean-Quest3.apk AndroidManifest.xml > "$RUNNER_TEMP/manifest.txt"
@@ -113,16 +119,19 @@ jobs:
               assert not any('/imgui-godot/' in f for f in files)
           PY
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: GodotOcean-Quest3-APK
-          path: artifacts/GodotOcean-Quest3.apk
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 0
-
-      - name: Publish persistent APK release
+      - name: Replace the current APK download
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "quest3-${GITHUB_SHA}" artifacts/GodotOcean-Quest3.apk --target "$GITHUB_SHA" --title 'Quest 3 APK' --notes 'Debug-signed ARM64 OpenXR APK for sideloading on Quest 3. Built by GitHub Actions; physical headset testing is still required.' --prerelease
+          tag=quest3-current
+          if gh release view "$tag" > /dev/null 2>&1; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$GITHUB_SHA" -F force=true
+            gh release upload "$tag" artifacts/GodotOcean-Quest3.apk --clobber
+            gh release edit "$tag" --title 'Quest 3 APK' --notes "Built from $GITHUB_SHA. Physical Quest 3 verification is still required." --latest
+          else
+            gh release create "$tag" artifacts/GodotOcean-Quest3.apk --target "$GITHUB_SHA" --title 'Quest 3 APK' --notes "Built from $GITHUB_SHA. Physical Quest 3 verification is still required." --latest
+          fi
+          gh release upload "$tag" "$RUNNER_TEMP/quest-waves.png" --clobber
+          gh api "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name | startswith("quest3-")) | select(.tag_name != "quest3-current") | .tag_name' | while read -r old_tag; do
+            gh release delete "$old_tag" --yes
+          done

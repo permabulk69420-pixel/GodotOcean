@@ -7,14 +7,13 @@ extends Node3D
 @onready var water: MeshInstance3D = $Water
 
 var xr: OpenXRInterface
+var xr_has_focus := false
 
 func _ready() -> void:
 	xr = XRServer.find_interface("OpenXR") as OpenXRInterface
 	if xr and (xr.is_initialized() or (OS.has_feature("android") and xr.initialize())):
 		get_viewport().use_xr = true
-		xr.session_visible.connect(_on_session_visible)
-		xr.session_focused.connect(_on_session_focused)
-		xr.session_stopping.connect(_on_session_visible)
+		_connect_xr_signals(xr)
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	elif OS.has_feature("android"):
 		push_error("Quest requires an active OpenXR runtime.")
@@ -26,7 +25,7 @@ func _ready() -> void:
 
 func _physics_process(delta: float) -> void:
 	# Optional smooth movement on the left thumbstick, relative to head direction.
-	if left_controller.get_is_active():
+	if xr_has_focus and left_controller.get_is_active():
 		var stick := left_controller.get_vector2("primary")
 		if stick.length() > 0.2:
 			var forward := -camera.global_basis.z
@@ -41,8 +40,21 @@ func _physics_process(delta: float) -> void:
 		floorf(camera.global_position.z / 4.0) * 4.0
 	)
 
+func _connect_xr_signals(interface: XRInterface) -> void:
+	interface.connect(&"session_visible", _on_session_visible)
+	# Godot 4.3 spells this signal with two s characters.
+	interface.connect(&"session_focussed", _on_session_focused)
+	interface.connect(&"session_stopping", _on_session_stopping)
+
 func _on_session_visible() -> void:
-	get_tree().paused = true
+	# Visible XR frames need animated water, even before input focus arrives.
+	xr_has_focus = false
+	get_tree().paused = false
 
 func _on_session_focused() -> void:
+	xr_has_focus = true
 	get_tree().paused = false
+
+func _on_session_stopping() -> void:
+	xr_has_focus = false
+	get_tree().paused = true
