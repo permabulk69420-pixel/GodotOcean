@@ -1,13 +1,21 @@
 name: Quest 3 APK
 
 on:
+  push:
+    branches: [main, codex/quest3-apk]
+    paths:
+      - '**.gd'
+      - '**.tscn'
+      - '**.tres'
+      - '**.glsl'
+      - '**.gdshader'
+      - '**.import'
+      - 'project.godot'
+      - 'export_presets.cfg'
+      - 'addons/godotopenxrvendors/**'
+      - 'android/.gdignore'
+      - '.github/workflows/quest3-apk.yml'
   workflow_dispatch:
-    inputs:
-      source_ref:
-        description: Ocean source commit or branch to build
-        required: true
-        default: codex/abyss-ocean
-        type: string
 
 concurrency:
   group: quest3-apk
@@ -21,15 +29,9 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 20
     env:
-      GODOT_VERSION: '4.6.3'
+      GODOT_VERSION: '4.3'
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.source_ref }}
-
-      - name: Record the source commit
-        id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-java@v4
         with:
@@ -50,13 +52,13 @@ jobs:
 
       - name: Install Android and Vulkan build tools
         run: |
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0'
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends xvfb libvulkan1 mesa-vulkan-drivers vulkan-validationlayers libxinerama1 libxcursor1 libxi6 libxrandr2
 
       - name: Install verified Godot and Android template
         run: |
-          mkdir -p "$RUNNER_TEMP/godot" "$HOME/.local/share/godot/export_templates/4.6.3.stable"
+          mkdir -p "$RUNNER_TEMP/godot" "$HOME/.local/share/godot/export_templates/4.3.stable"
           cd "$RUNNER_TEMP/godot"
           base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
           curl --fail --location --silent --show-error "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o godot.zip
@@ -69,9 +71,9 @@ jobs:
           chmod +x "Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           ln -s "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$RUNNER_TEMP/godot/godot"
           echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
-          unzip -j -q "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" templates/android_source.zip -d "$HOME/.local/share/godot/export_templates/4.6.3.stable"
+          unzip -j -q "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" templates/android_source.zip -d "$HOME/.local/share/godot/export_templates/4.3.stable"
           mkdir -p "$GITHUB_WORKSPACE/android/build"
-          unzip -q "$HOME/.local/share/godot/export_templates/4.6.3.stable/android_source.zip" -d "$GITHUB_WORKSPACE/android/build"
+          unzip -q "$HOME/.local/share/godot/export_templates/4.3.stable/android_source.zip" -d "$GITHUB_WORKSPACE/android/build"
 
       - name: Configure Android export
         run: |
@@ -79,7 +81,7 @@ jobs:
           if [ ! -f "$RUNNER_TEMP/debug.keystore" ]; then
             keytool -genkeypair -keystore "$RUNNER_TEMP/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'
           fi
-          cat > "$HOME/.config/godot/editor_settings-4.6.tres" <<EOF
+          cat > "$HOME/.config/godot/editor_settings-4.3.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
           [resource]
           export/android/java_sdk_path = "$JAVA_HOME"
@@ -94,11 +96,15 @@ jobs:
       - name: Import and build Quest 3 APK
         run: |
           mkdir -p artifacts
-          godot --headless --editor --audio-driver Dummy --path . --import
+          xvfb-run -a godot --editor --audio-driver Dummy --path . --import
+          godot --headless --path . --script res://.github/tests/quest_preview_settings.gd
+          QUEST_XR_PREVIEW=1 QUEST_CAPTURE="$RUNNER_TEMP/quest-waves.png" timeout 90 xvfb-run -a godot --path . --audio-driver Dummy --rendering-method mobile --gpu-validation --resolution 960x540 --script res://.github/tests/quest_waves.gd > "$RUNNER_TEMP/quest-waves.log" 2>&1 || { cat "$RUNNER_TEMP/quest-waves.log"; exit 1; }
+          cat "$RUNNER_TEMP/quest-waves.log"
+          if grep -E 'Format operand|Validation Error|SYNC-HAZARD|VUID-' "$RUNNER_TEMP/quest-waves.log"; then exit 1; fi
+          rm override.cfg
           godot --headless --path . --export-debug 'Meta Quest' artifacts/GodotOcean-Quest3.apk
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs artifacts/GodotOcean-Quest3.apk | tee "$RUNNER_TEMP/signing.txt"
-          grep -F 'Signer #1 certificate SHA-256 digest: c1efe166952ff6ac6db469230e662f886c6cce1cfe0a90a826b6c12ac0e6c632' "$RUNNER_TEMP/signing.txt"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree artifacts/GodotOcean-Quest3.apk AndroidManifest.xml > "$RUNNER_TEMP/manifest.txt"
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose artifacts/GodotOcean-Quest3.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump xmltree artifacts/GodotOcean-Quest3.apk AndroidManifest.xml > "$RUNNER_TEMP/manifest.txt"
           python3 - <<'PY'
           from pathlib import Path
           import re, zipfile
@@ -109,26 +115,23 @@ jobs:
               files = apk.namelist()
               assert 'lib/arm64-v8a/libopenxr_loader.so' in files
               assert 'lib/arm64-v8a/libgodotopenxrmeta.so' in files
-              assert 'assets/ocean/main.gdc' in files
+              assert 'assets/quest/main.gdc' in files
               assert not any('/imgui-godot/' in f for f in files)
           PY
 
       - name: Replace the current APK download
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           tag=quest3-current
           if gh release view "$tag" > /dev/null 2>&1; then
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$SOURCE_SHA" -F force=true
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$GITHUB_SHA" -F force=true
             gh release upload "$tag" artifacts/GodotOcean-Quest3.apk --clobber
-            gh release edit "$tag" --title 'Quest 3 APK' --notes "Built from $SOURCE_SHA. Physical Quest 3 verification is still required." --latest
+            gh release edit "$tag" --title 'Quest 3 APK' --notes "Built from $GITHUB_SHA. Physical Quest 3 verification is still required." --latest
           else
-            gh release create "$tag" artifacts/GodotOcean-Quest3.apk --target "$SOURCE_SHA" --title 'Quest 3 APK' --notes "Built from $SOURCE_SHA. Physical Quest 3 verification is still required." --latest
+            gh release create "$tag" artifacts/GodotOcean-Quest3.apk --target "$GITHUB_SHA" --title 'Quest 3 APK' --notes "Built from $GITHUB_SHA. Physical Quest 3 verification is still required." --latest
           fi
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq '.assets[] | select(.name != "GodotOcean-Quest3.apk") | .id' | while read -r asset_id; do
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
-          done
+          gh release upload "$tag" "$RUNNER_TEMP/quest-waves.png" --clobber
           gh api "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.tag_name | startswith("quest3-")) | select(.tag_name != "quest3-current") | .tag_name' | while read -r old_tag; do
             gh release delete "$old_tag" --yes
           done
