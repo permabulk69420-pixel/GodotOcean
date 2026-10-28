@@ -69,6 +69,10 @@ func _init() -> void:
 	rng.set_seed(1234) # This seed gives big waves!
 
 func _ready() -> void:
+	# Exported scenes restore script properties in a different order from text scenes.
+	# Wait until map_size and parameters are both final before allocating GPU buffers.
+	_setup_wave_generator()
+	_update_scales_uniform()
 	RenderingServer.global_shader_parameter_set(&'water_color', water_color.srgb_to_linear())
 	RenderingServer.global_shader_parameter_set(&'foam_color', foam_color.srgb_to_linear())
 
@@ -82,7 +86,7 @@ func _process(delta : float) -> void:
 	time += delta
 
 func _setup_wave_generator() -> void:
-	if parameters.size() <= 0: return
+	if not is_node_ready() or parameters.size() <= 0: return
 	for param in parameters:
 		param.should_generate_spectrum = true
 

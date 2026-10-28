@@ -35,9 +35,16 @@ jobs:
           java-version: '17'
 
       - uses: actions/cache@v4
+        id: signing-key
         with:
           path: ${{ runner.temp }}/debug.keystore
           key: quest3-debug-signing-v1
+
+      - name: Require the existing signing key for in-place updates
+        if: steps.signing-key.outputs.cache-hit != 'true'
+        run: |
+          echo '::error::The previous APK signing key was not restored. Refusing to rotate the key.'
+          exit 1
 
       - name: Install Android and Vulkan build tools
         run: |

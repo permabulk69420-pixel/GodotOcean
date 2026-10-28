@@ -15,10 +15,20 @@ func _check(condition: bool, message: String) -> void:
 		push_error(message)
 
 func _run() -> void:
-	# Isolate compute validation from Godot 4.3's Mobile MSAA render-pass warnings.
-	root.msaa_3d = Viewport.MSAA_DISABLED
-	scene = load("res://quest/main.tscn").instantiate()
+	root.msaa_3d = ProjectSettings.get_setting("rendering/anti_aliasing/quality/msaa_3d.android")
+	# Round-trip the scene to binary so startup uses exported property ordering.
+	var source: Node3D = load("res://quest/main.tscn").instantiate()
+	_check(source.get_node("Water").wave_generator == null,
+		"Wave GPU resources must not be allocated while scene properties are restoring")
+	var packed := PackedScene.new()
+	_check(packed.pack(source) == OK, "Could not pack the Quest scene")
+	var path := "user://quest-wave-check.scn"
+	_check(ResourceSaver.save(packed, path) == OK, "Could not save the compiled Quest scene")
+	source.free()
+	scene = load(path).instantiate()
 	root.add_child(scene)
+	_check(scene.get_node("Water").wave_generator.map_size == 256,
+		"Compiled Quest scene must initialize the 256-wide wave generator")
 	var camera: XRCamera3D = scene.get_node("XROrigin3D/XRCamera3D")
 	_check(camera.global_position.y >= 0.5 and camera.global_position.y <= 3.0,
 		"Quest eye height must be near the ocean, got %.2f m" % camera.global_position.y)
