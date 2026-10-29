@@ -45,7 +45,7 @@ func _ready() -> void:
 		get_viewport().vrs_mode = Viewport.VRS_XR
 		if xr.has_method("get_available_display_refresh_rates"):
 			var rates = xr.get_available_display_refresh_rates()
-			if rates.has(120.0): xr.set_display_refresh_rate(120.0)
+			if rates.has(72.0): xr.set_display_refresh_rate(72.0)
 		connect_xr_lifecycle(xr)
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	elif OS.has_feature("android"):
