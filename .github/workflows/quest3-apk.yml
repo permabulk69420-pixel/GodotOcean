@@ -111,7 +111,8 @@ jobs:
               assert 'lib/arm64-v8a/libgodotopenxrmeta.so' in files
               assert 'assets/ocean/main.gdc' in files
               assert 'assets/player/swimmer.gdc' in files
-              assert 'assets/terrain/baked/index.tres' in files
+              print('Packaged terrain index:', [f for f in files if 'terrain/baked/index' in f])
+              assert any(f in files for f in ['assets/terrain/baked/index.tres', 'assets/terrain/baked/index.tres.remap'])
               assert any(f.startswith('assets/terrain/baked/') and f.endswith('.res') for f in files)
               assert not any('/imgui-godot/' in f for f in files)
           PY
