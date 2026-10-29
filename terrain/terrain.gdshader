@@ -24,12 +24,23 @@ void vertex() {
  sunlight=COLOR.g;
 }
 void fragment() {
+ AO = 1.0;
+ AO_LIGHT_AFFECT = 0.0;
+ SPECULAR = 0.5;
  if (surface_kind > 0) {
   ALBEDO = tint.rgb * texture(colour_map, UV * uv_scale).rgb;
-  if (surface_kind == 2 && length(TANGENT) > 0.1 && length(BINORMAL) > 0.1) {
+  if (surface_kind == 2) {
    vec3 detail = texture(normal_map, UV * uv_scale).rgb * 2.0 - 1.0;
    detail.xy *= normal_strength;
-   NORMAL = normalize(mat3(normalize(TANGENT), normalize(BINORMAL), NORMAL) * normalize(detail));
+   // Derive the skin's cotangent frame from the posed surface. Equipment and
+   // terrain do not need tangent attributes or degenerate imported tangents.
+   vec3 dp1 = dFdx(VERTEX), dp2 = dFdy(VERTEX);
+   vec2 duv1 = dFdx(UV * uv_scale), duv2 = dFdy(UV * uv_scale);
+   vec3 dp2perp = cross(dp2, NORMAL), dp1perp = cross(NORMAL, dp1);
+   vec3 t = dp2perp * duv1.x + dp1perp * duv2.x;
+   vec3 b = dp2perp * duv1.y + dp1perp * duv2.y;
+   float scale = inversesqrt(max(max(dot(t,t),dot(b,b)), 0.00000001));
+   NORMAL = normalize(mat3(t * scale, b * scale, NORMAL) * normalize(detail));
   }
   ROUGHNESS = roughness;
   METALLIC = metalness;
