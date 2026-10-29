@@ -4,6 +4,17 @@ shader_type spatial;
 // Godot asynchronously specializes pipelines. Coverage remains fully opaque.
 render_mode world_vertex_coords, depth_draw_always;
 uniform sampler2D grain : repeat_enable, filter_linear_mipmap_anisotropic;
+// Equipment shares this draw layout so Mobile never switches incompatible
+// specialized shader layouts between terrain, skinned palms and held tools.
+uniform int surface_kind = 0;
+uniform vec4 tint : source_color = vec4(1.0);
+uniform sampler2D colour_map : source_color, hint_default_white, repeat_enable, filter_linear_mipmap_anisotropic;
+uniform sampler2D normal_map : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
+uniform vec2 uv_scale = vec2(1.0);
+uniform float normal_strength = 0.0;
+uniform float roughness = 0.4;
+uniform float metalness = 0.0;
+uniform vec3 emitted : source_color = vec3(0.0);
 varying vec3 world_position;
 varying vec3 world_normal;
 varying float sunlight;
@@ -13,6 +24,17 @@ void vertex() {
  sunlight=COLOR.g;
 }
 void fragment() {
+ if (surface_kind > 0) {
+  ALBEDO = tint.rgb * texture(colour_map, UV * uv_scale).rgb;
+  if (surface_kind == 2 && length(TANGENT) > 0.1 && length(BINORMAL) > 0.1) {
+   vec3 detail = texture(normal_map, UV * uv_scale).rgb * 2.0 - 1.0;
+   detail.xy *= normal_strength;
+   NORMAL = normalize(mat3(normalize(TANGENT), normalize(BINORMAL), NORMAL) * normalize(detail));
+  }
+  ROUGHNESS = roughness;
+  METALLIC = metalness;
+  EMISSION = emitted;
+ } else {
  vec3 weights=pow(abs(normalize(world_normal)),vec3(4.0));
  weights/=max(dot(weights,vec3(1)),0.001);
  float texture_grain=texture(grain,world_position.zy*0.08).r*weights.x+texture(grain,world_position.xz*0.08).r*weights.y+texture(grain,world_position.xy*0.08).r*weights.z;
@@ -24,5 +46,6 @@ void fragment() {
  SPECULAR=0.16;
  AO=COLOR.b;
  AO_LIGHT_AFFECT=0.0;
+ }
  ALPHA=1.0;
 }

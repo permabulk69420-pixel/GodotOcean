@@ -33,6 +33,23 @@ func run() -> void:
 		fail('Published game data has no seabed collision beneath the player spawn')
 		return
 	print('EXPORTED terrain: ',terrain.chunks.size(),' instantiated chunks; seabed beneath spawn=',hit.position)
+	# Instantiate the actual exported hand scenes and compiled interaction scripts.
+	var scene=load('res://ocean/main.tscn').instantiate()
+	var player=scene.get_node('Player')
+	scene.remove_child(player)
+	scene.free()
+	world.add_child(player)
+	await process_frame
+	for hand in player.thrusters.hands:
+		var mesh=hand.find_children('*','MeshInstance3D',true,false)[0]
+		if hand.grip_bone<0 or not mesh.material_override.get_shader_parameter('colour_map') or not mesh.material_override.get_shader_parameter('normal_map'):
+			fail('Exported hand is missing its textured skin or palm grip')
+			return
+	player.thrusters.spawn_motors()
+	if player.thrusters.motors.size()!=2 or not player.thrusters.propellers[0] or not player.thrusters.propellers[1]:
+		fail('Exported handheld thruster model or impeller is missing')
+		return
+	print('EXPORTED hands/thrusters: both textured hand rigs and two complete Blender motors instantiated')
 	world.queue_free()
 	await process_frame
 	print('EXPORTED PACKAGE: PASS')

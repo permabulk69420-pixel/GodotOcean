@@ -1,4 +1,4 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://ocean/main.gd" id="1"]
 [ext_resource type="Script" path="res://ocean/ocean.gd" id="2"]
@@ -6,6 +6,8 @@
 
 [ext_resource type="Script" path="res://terrain/terrain.gd" id="5"]
 [ext_resource type="Script" path="res://player/swimmer.gd" id="6"]
+[ext_resource type="Script" path="res://player/vr_hand.gd" id="7"]
+[ext_resource type="Script" path="res://player/hand_thrusters.gd" id="8"]
 
 [sub_resource type="CapsuleShape3D" id="SwimmerShape"]
 radius = 0.28
@@ -79,9 +81,21 @@ far = 6000.0
 
 [node name="LeftHand" type="XRController3D" parent="Player/XROrigin3D"]
 tracker = &"left_hand"
+pose = &"grip"
+
+[node name="Hand" type="Node3D" parent="Player/XROrigin3D/LeftHand"]
+script = ExtResource("7")
 
 [node name="RightHand" type="XRController3D" parent="Player/XROrigin3D"]
 tracker = &"right_hand"
+pose = &"grip"
+
+[node name="Hand" type="Node3D" parent="Player/XROrigin3D/RightHand"]
+script = ExtResource("7")
+left_hand = false
+
+[node name="HandThrusters" type="Node3D" parent="Player"]
+script = ExtResource("8")
 
 [node name="SkySun" type="DirectionalLight3D" parent="."]
 rotation_degrees = Vector3(-32, 155, 0)

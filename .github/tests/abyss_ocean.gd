@@ -21,9 +21,16 @@ func controller(tracker_name: StringName) -> XRPositionalTracker:
 	tracker.type=XRServer.TRACKER_CONTROLLER
 	tracker.name=tracker_name
 	tracker.set_pose(&'default',Transform3D(Basis.IDENTITY,Vector3(0,1,-0.3)),Vector3.ZERO,Vector3.ZERO,XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	tracker.set_pose(&'grip',Transform3D(Basis.IDENTITY,Vector3(-0.25 if tracker_name==&'left_hand' else 0.25,1,-0.3)),Vector3.ZERO,Vector3.ZERO,XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 	tracker.set_input(&'primary',Vector2.ZERO)
 	XRServer.add_tracker(tracker)
 	return tracker
+func reach_motor(side: int, tracker: XRPositionalTracker) -> void:
+	var hand: OceanVRHand=scene.player.thrusters.hands[side]
+	var motor: Node3D=scene.player.thrusters.motors[side]
+	var offset: Vector3=hand.object_grip.global_position-hand.controller.global_position
+	var pose:=Transform3D(Basis.IDENTITY,scene.origin.to_local(motor.global_position-offset))
+	tracker.set_pose(&'grip',pose,Vector3.ZERO,Vector3.ZERO,XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 func run() -> void:
 	root.msaa_3d=Viewport.MSAA_4X
 	if OS.get_environment('OCEAN_STEREO')!='0':
@@ -36,6 +43,9 @@ func run() -> void:
 		right=controller(&'right_hand')
 	scene=load('res://ocean/main.tscn').instantiate()
 	root.add_child(scene)
+	if stereo:
+		for tracker in [left, right]:
+			tracker.set_pose(&'grip',tracker.get_pose(&'grip').transform,Vector3.ZERO,Vector3.ZERO,XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 	check(scene.ocean.surface.visible,'Water is visible before refraction depth arrives')
 	check(not scene.has_node('Reef'),'Ocean contains no scenery')
 	if stereo:
@@ -57,6 +67,14 @@ func run() -> void:
 	check(scene.world.compositor==null,'The mobile tile pass must not contain compositor breaks')
 	if stereo:
 		check(right!=null and scene.right_controller.get_is_active(),'Tracked controller is active')
+		check(scene.player.thrusters.motors.size()==2,'Both Blender thrusters are instantiated in the rendered game')
+		reach_motor(0,left)
+		reach_motor(1,right)
+		await frames(2)
+		left.set_input(&'grip',1.0)
+		right.set_input(&'grip',1.0)
+		await frames(2)
+		check(scene.player.thrusters.held[0]!=null and scene.player.thrusters.held[1]!=null,'Both rendered hands independently pick up the motors')
 		var initial: Vector3=scene.player.global_position
 		left.set_input(&'primary',Vector2(1,0))
 		await frames(2)
@@ -79,6 +97,15 @@ func run() -> void:
 	check(scene.submerged,'Live diving enters underwater rendering')
 	check(scene.world.environment==scene.underwater_environment,'Underwater absorption activates')
 	if stereo:
+		left.set_input(&'trigger',0.6)
+		right.set_input(&'trigger',0.6)
+		await frames(3)
+		check(scene.player.thrusters.propulsion.length()>0.9,'Both trigger throttles drive live underwater propulsion')
+		left.set_input(&'trigger',0.0)
+		right.set_input(&'trigger',0.0)
+		left.set_input(&'grip',0.0)
+		await frames(2)
+		check(scene.player.thrusters.held[0]==null and scene.player.thrusters.held[1]!=null,'Dropping one rendered motor leaves the other hand holding its own')
 		right.set_input(&'primary',Vector2(0,1))
 		var ascent_frames:=0
 		while (scene.player.submerged or scene.player.head_depth> -0.12) and ascent_frames<90:
