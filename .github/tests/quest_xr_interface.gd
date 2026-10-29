@@ -5,13 +5,25 @@ signal session_visible
 signal session_focussed
 signal session_stopping
 
+var head_tracker: XRPositionalTracker
 var active := false
 var head := Transform3D(Basis.IDENTITY, Vector3(0, 1.6, 0))
 
 func _get_name() -> StringName: return &"Quest stereo preview"
 func _get_capabilities() -> int: return XRInterface.XR_VR
-func _initialize() -> bool: active = true; return true
-func _uninitialize() -> void: active = false
+func _initialize() -> bool:
+	active=true
+	head_tracker=XRPositionalTracker.new()
+	head_tracker.name=&"head"
+	head_tracker.type=XRServer.TRACKER_HEAD
+	update_head_pose()
+	XRServer.add_tracker(head_tracker)
+	return true
+func update_head_pose() -> void:
+	head_tracker.set_pose(&"default",head,Vector3.ZERO,Vector3.ZERO,XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+func _uninitialize() -> void:
+	active=false
+	if head_tracker: XRServer.remove_tracker(head_tracker)
 func _is_initialized() -> bool: return active
 func _get_view_count() -> int: return 2
 func _get_render_target_size() -> Vector2:

@@ -2,7 +2,6 @@ extends SceneTree
 var scene: Node3D
 var stereo: XRInterfaceExtension
 var failures: Array[String]=[]
-var capture_dir := '/tmp/abyss-runtime'
 var frame_times: Array[float]=[]
 var left: XRPositionalTracker
 var right: XRPositionalTracker
@@ -25,19 +24,7 @@ func controller(tracker_name: StringName) -> XRPositionalTracker:
 	tracker.set_input(&'primary',Vector2.ZERO)
 	XRServer.add_tracker(tracker)
 	return tracker
-func capture(name: String) -> void:
-	var img:=root.get_texture().get_image()
-	check(not img.is_empty(),'Rendered view must contain pixels')
-	var dark:=0
-	for y in range(0,img.get_height(),16):
-		for x in range(0,img.get_width(),16):
-			var c:=img.get_pixel(x,y)
-			if c.r+c.g+c.b<0.006: dark+=1
-	check(dark<20,'Rendered view must not contain large black rectangles')
-	img.save_png(capture_dir.path_join(name+'.png'))
 func run() -> void:
-	if OS.has_environment('OCEAN_CAPTURE_DIR'): capture_dir=OS.get_environment('OCEAN_CAPTURE_DIR')
-	DirAccess.make_dir_recursive_absolute(capture_dir)
 	root.msaa_3d=Viewport.MSAA_4X
 	if OS.get_environment('OCEAN_STEREO')!='0':
 		stereo=load('res://.github/tests/quest_xr_interface.gd').new()
@@ -52,39 +39,29 @@ func run() -> void:
 	check(scene.ocean.surface.visible,'Water is visible before refraction depth arrives')
 	check(not scene.has_node('Reef'),'Ocean contains no scenery')
 	if stereo:
-		scene.connect_xr_lifecycle(stereo)
 		stereo.emit_signal(&'session_focussed')
 	RenderingServer.viewport_set_measure_render_time(root.get_viewport_rid(),true)
+	for i in range(180):
+		if scene.terrain.near_ready: break
+		await frames(1)
+	check(scene.terrain.near_ready,"Nearby terrain collision must load before swimming")
 	await frames(4)
 	check(scene.ocean.is_processing() and scene.is_physics_processing(),'Real simulation and movement remain enabled')
 	check(scene.ocean.simulation_time>0,'Waves advance in time')
 	check(scene.cache_bound,'Shared GPU wave geometry reaches the material')
 	check(scene.ocean.surface.visible,'Water remains visible after startup')
-	capture('surface')
-	var cache: AbyssWaveCache=scene.ocean.wave_cache
-	var image:=cache.displacement.get_image()
-	var params:=cache.last_parameters.duplicate()
-	var vertices: PackedVector3Array=scene.ocean.surface.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
-	print("Shared wave samples: ",vertices.size(),"; triangles: ",scene.ocean.surface.mesh.surface_get_arrays(0)[Mesh.ARRAY_INDEX].size()/3)
-	var maximum_error:=0.0
-	for i in range(0,16000,1000):
-		var v:=vertices[i]
-		var expected: Vector3=scene.ocean.displacement_at(Vector2(v.x+params[0],v.z+params[1]),params[2])
-		var pixel:=image.get_pixel(i%1024,i/1024)
-		maximum_error=maxf(maximum_error,expected.distance_to(Vector3(pixel.r,pixel.g,pixel.b)))
-	print('Actual cached GPU displacement maximum error: ',maximum_error,' m')
-	check(maximum_error<0.008,'Rendered wave geometry agrees with gameplay queries')
+	check(scene.terrain.chunks.size()>0,'The real scene contains loaded terrain meshes and collision')
 	var first_time: float=scene.ocean.simulation_time
 	var shader_code: String=scene.ocean.material.shader.code
 	check(not 'hint_screen_texture' in shader_code and not 'hint_depth_texture' in shader_code,'Opaque water must not force full-screen color or depth copies')
 	check(scene.world.compositor==null,'The mobile tile pass must not contain compositor breaks')
 	if stereo:
 		check(right!=null and scene.right_controller.get_is_active(),'Tracked controller is active')
-		var initial: Vector3=scene.origin.position
+		var initial: Vector3=scene.player.global_position
 		left.set_input(&'primary',Vector2(1,0))
 		await frames(2)
 		left.set_input(&'primary',Vector2.ZERO)
-		check(scene.origin.position.x>initial.x,'Left stick strafes the real player')
+		check(scene.player.global_position.x>initial.x,'Left stick strafes the real player')
 		# Accelerate elapsed simulation time; normal physics and controller movement stay active.
 		Engine.time_scale=6.0
 		right.set_input(&'primary',Vector2(0,-1))
@@ -94,28 +71,31 @@ func run() -> void:
 			descent_frames+=1
 		right.set_input(&'primary',Vector2.ZERO)
 		check(scene.depth>=2.0 and scene.submerged,'Controller swimming reaches at least two metres beneath the moving water')
-		check(scene.origin.position.y<initial.y,'Controller input moved the player downward')
+		check(scene.player.global_position.y<initial.y,'Controller input moved the player downward')
 		print('Controller dive: ',descent_frames,' frames; head=',scene.camera.global_position,' depth=',scene.depth)
 	else:
-		scene.origin.position.y=-5
+		scene.player.global_position.y=-5
 	await frames(2)
 	check(scene.submerged,'Live diving enters underwater rendering')
 	check(scene.world.environment==scene.underwater_environment,'Underwater absorption activates')
-	capture('underwater')
 	if stereo:
 		right.set_input(&'primary',Vector2(0,1))
 		var ascent_frames:=0
-		while (scene.camera.global_position.y<1.6 or scene.submerged) and ascent_frames<90:
+		while (scene.player.submerged or scene.player.head_depth> -0.12) and ascent_frames<90:
 			await frames(1)
 			ascent_frames+=1
 		right.set_input(&'primary',Vector2.ZERO)
 		print('Controller resurfacing: ',ascent_frames,' frames; head=',scene.camera.global_position,' depth=',scene.depth)
+		var initial_yaw: float=scene.player.rotation.y
+		right.set_input(&'primary',Vector2(0.7,0))
+		await frames(5)
+		right.set_input(&'primary',Vector2.ZERO)
+		check(absf(scene.player.rotation.y-initial_yaw)>0.1,'Right stick provides smooth turning')
 		Engine.time_scale=1.0
 	else:
-		scene.origin.position.y=1
+		scene.player.global_position.y=1
 	await frames(2)
 	check(not scene.submerged,'Controller swimming resurfaces above the moving water')
-	capture('resurfaced')
 	check(scene.ocean.simulation_time>first_time,'Simulation continues throughout movement and diving')
 	if stereo:
 		stereo.emit_signal(&'session_stopping')

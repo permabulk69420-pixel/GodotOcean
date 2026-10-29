@@ -1,8 +1,15 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://ocean/main.gd" id="1"]
 [ext_resource type="Script" path="res://ocean/ocean.gd" id="2"]
 [ext_resource type="Script" path="res://ocean/ocean_settings.gd" id="4"]
+
+[ext_resource type="Script" path="res://terrain/terrain.gd" id="5"]
+[ext_resource type="Script" path="res://player/swimmer.gd" id="6"]
+
+[sub_resource type="CapsuleShape3D" id="SwimmerShape"]
+radius = 0.28
+height = 1.7
 
 [sub_resource type="PhysicalSkyMaterial" id="Atmosphere"]
 rayleigh_coefficient = 2.0
@@ -52,18 +59,28 @@ shadow_enabled = false
 script = ExtResource("2")
 settings = SubResource("OceanSettings")
 
-[node name="Player" type="XROrigin3D" parent="."]
-position = Vector3(0, 0, 8)
+[node name="Terrain" type="Node3D" parent="."]
+script = ExtResource("5")
 
-[node name="Head" type="XRCamera3D" parent="Player"]
+[node name="Player" type="CharacterBody3D" parent="."]
+position = Vector3(0, 0, 8)
+script = ExtResource("6")
+
+[node name="BodyShape" type="CollisionShape3D" parent="Player"]
+shape = SubResource("SwimmerShape")
+position = Vector3(0, 0.85, 0)
+
+[node name="XROrigin3D" type="XROrigin3D" parent="Player"]
+
+[node name="Head" type="XRCamera3D" parent="Player/XROrigin3D"]
 current = true
 near = 0.08
 far = 6000.0
 
-[node name="LeftHand" type="XRController3D" parent="Player"]
+[node name="LeftHand" type="XRController3D" parent="Player/XROrigin3D"]
 tracker = &"left_hand"
 
-[node name="RightHand" type="XRController3D" parent="Player"]
+[node name="RightHand" type="XRController3D" parent="Player/XROrigin3D"]
 tracker = &"right_hand"
 
 [node name="SkySun" type="DirectionalLight3D" parent="."]

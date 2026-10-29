@@ -43,6 +43,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/ocean-preview"
           xvfb-run -a godot --editor --audio-driver Dummy --path . res://ocean/main.tscn --import
+          godot --headless --path . --script res://terrain/bake.gd
+          godot --headless --editor --path . --import
           OCEAN_CAPTURE_DIR="$RUNNER_TEMP/ocean-preview" OCEAN_TEST_EYE_SIZE=320 OCEAN_STEREO="${{ matrix.stereo }}" timeout 300 xvfb-run -a godot --path . --audio-driver Dummy --rendering-method mobile --gpu-validation --fixed-fps 60 --resolution 1280x960 --script res://.github/tests/abyss_ocean.gd > "$RUNNER_TEMP/ocean-preview/check.log" 2>&1 || { cat "$RUNNER_TEMP/ocean-preview/check.log"; exit 1; }
           cat "$RUNNER_TEMP/ocean-preview/check.log"
           if grep -E 'SCRIPT ERROR|ERROR:|Format operand|Validation Error|SYNC-HAZARD|VUID-' "$RUNNER_TEMP/ocean-preview/check.log"; then exit 1; fi

@@ -3,10 +3,12 @@ extends Node3D
 signal submerged_changed(submerged: bool)
 
 @onready var ocean: AbyssOcean = $Ocean
-@onready var origin: XROrigin3D = $Player
-@onready var camera: XRCamera3D = $Player/Head
-@onready var left_controller: XRController3D = $Player/LeftHand
-@onready var right_controller: XRController3D = $Player/RightHand
+@onready var player: ShallowsSwimmer = $Player
+@onready var terrain: ShallowsTerrain = $Terrain
+@onready var origin: XROrigin3D = $Player/XROrigin3D
+@onready var camera: XRCamera3D = $Player/XROrigin3D/Head
+@onready var left_controller: XRController3D = $Player/XROrigin3D/LeftHand
+@onready var right_controller: XRController3D = $Player/XROrigin3D/RightHand
 @onready var world: WorldEnvironment = $Environment
 @onready var sun: DirectionalLight3D = $Sun
 
@@ -21,6 +23,9 @@ var look := Vector2.ZERO
 
 func _ready() -> void:
 	ocean.observer = camera
+	terrain.observer = camera
+	player.ocean = ocean
+	player.terrain = terrain
 	ocean.wave_cache.start()
 	ocean.material.set_shader_parameter("sky_sun_direction",sun.global_basis.z)
 	surface_environment = world.environment
@@ -32,11 +37,13 @@ func _ready() -> void:
 	underwater_environment.fog_sky_affect = 1.0
 	underwater_environment.ambient_light_color = Color(0.06, 0.32, 0.40)
 	underwater_environment.ambient_light_energy = 0.38
-	xr = XRServer.find_interface("OpenXR")
+	xr = XRServer.primary_interface
+	if not xr or not xr.is_initialized(): xr = XRServer.find_interface("OpenXR")
 	if xr and (xr.is_initialized() or (OS.has_feature("android") and xr.initialize())):
 		get_viewport().use_xr = true
-		var rates = xr.get_available_display_refresh_rates()
-		if rates.has(120.0): xr.set_display_refresh_rate(120.0)
+		if xr.has_method("get_available_display_refresh_rates"):
+			var rates = xr.get_available_display_refresh_rates()
+			if rates.has(120.0): xr.set_display_refresh_rate(120.0)
 		connect_xr_lifecycle(xr)
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	elif OS.has_feature("android"):
@@ -53,14 +60,17 @@ func connect_xr_lifecycle(interface: XRInterface) -> void:
 
 func _on_visible() -> void:
 	xr_focused = false
+	player.controls_enabled = false
 	get_tree().paused = false
 
 func _on_focused() -> void:
 	xr_focused = true
+	player.controls_enabled = true
 	get_tree().paused = false
 
 func _on_stopping() -> void:
 	xr_focused = false
+	player.controls_enabled = false
 	get_tree().paused = true
 
 func _process(delta: float) -> void:
@@ -70,35 +80,11 @@ func _process(delta: float) -> void:
 		ocean.material.set_shader_parameter("cache_ready",true)
 		cache_bound=true
 
-func _unhandled_input(event: InputEvent) -> void:
-	if get_viewport().use_xr: return
-	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-		look.x -= event.relative.x * 0.002
-		look.y = clampf(look.y - event.relative.y * 0.002, -1.45, 1.45)
-		origin.rotation.y = look.x
-		camera.rotation.x = look.y
-	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_ESCAPE:
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED else Input.MOUSE_MODE_CAPTURED
-
-func _physics_process(delta: float) -> void:
-	var movement := Vector3.ZERO
-	if get_viewport().use_xr:
-		if xr_focused and left_controller.get_is_active():
-			var stick := left_controller.get_vector2("primary")
-			movement += camera.global_basis.x * stick.x - camera.global_basis.z * stick.y
-		if xr_focused and right_controller.get_is_active():
-			movement.y += right_controller.get_vector2("primary").y
-	else:
-		movement += camera.global_basis.x * (float(Input.is_physical_key_pressed(KEY_D)) - float(Input.is_physical_key_pressed(KEY_A)))
-		movement -= camera.global_basis.z * (float(Input.is_physical_key_pressed(KEY_W)) - float(Input.is_physical_key_pressed(KEY_S)))
-		movement.y += float(Input.is_physical_key_pressed(KEY_SPACE)) - float(Input.is_physical_key_pressed(KEY_CTRL))
-	if movement.length_squared() > 0.01:
-		origin.global_position += movement.limit_length() * delta * (3.2 if submerged else 2.2)
+func _physics_process(_delta: float) -> void:
 	update_water_state()
 
 func update_water_state() -> void:
-	var sample := ocean.sample_surface(camera.global_position)
-	depth = float(sample.height) - camera.global_position.y
+	depth = player.head_depth
 	var next := submerged
 	if depth > 0.08: next = true
 	elif depth < -0.08: next = false

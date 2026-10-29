@@ -87,6 +87,11 @@ jobs:
         run: |
           mkdir -p artifacts
           godot --headless --editor --audio-driver Dummy --path . --import
+          godot --headless --path . --script res://terrain/bake.gd
+          godot --headless --editor --path . --import
+          godot --headless --path . --fixed-fps 60 --script res://.github/tests/shallows.gd > "$RUNNER_TEMP/shallows-physics.log" 2>&1 || { cat "$RUNNER_TEMP/shallows-physics.log"; exit 1; }
+          cat "$RUNNER_TEMP/shallows-physics.log"
+          if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/shallows-physics.log"; then exit 1; fi
           OCEAN_TEST_EYE_SIZE=320 OCEAN_STEREO=1 OCEAN_CAPTURE_DIR="$RUNNER_TEMP/ocean-runtime" timeout 300 xvfb-run -a godot --path . --audio-driver Dummy --rendering-method mobile --gpu-validation --fixed-fps 60 --resolution 1280x960 --script res://.github/tests/abyss_ocean.gd > "$RUNNER_TEMP/ocean-runtime.log" 2>&1 || { cat "$RUNNER_TEMP/ocean-runtime.log"; exit 1; }
           cat "$RUNNER_TEMP/ocean-runtime.log"
           if grep -E 'SCRIPT ERROR|ERROR:|Validation Error|VUID-|SYNC-HAZARD' "$RUNNER_TEMP/ocean-runtime.log"; then exit 1; fi
@@ -105,6 +110,9 @@ jobs:
               assert 'lib/arm64-v8a/libopenxr_loader.so' in files
               assert 'lib/arm64-v8a/libgodotopenxrmeta.so' in files
               assert 'assets/ocean/main.gdc' in files
+              assert 'assets/player/swimmer.gdc' in files
+              assert 'assets/terrain/baked/index.tres' in files
+              assert any(f.startswith('assets/terrain/baked/') and f.endswith('.res') for f in files)
               assert not any('/imgui-godot/' in f for f in files)
           PY
 
