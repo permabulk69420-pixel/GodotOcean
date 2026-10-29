@@ -29,13 +29,14 @@ func _ready() -> void:
 	material.set_shader_parameter('grain',texture)
 	if ResourceLoader.exists('res://terrain/baked/index.tres'):
 		var index: ShallowsBakeIndex=load('res://terrain/baked/index.tres')
-		if index.signature==settings.signature():
+		if index.signature==settings.signature() and not index.coordinates.is_empty():
+			var files:=index.files
 			var order:=[]
-			for i in range(index.files.size()): order.append(i)
+			for i in range(files.size()): order.append(i)
 			order.sort_custom(func(a,b): return Vector3(index.coordinates[a]).length_squared()<Vector3(index.coordinates[b]).length_squared())
 			for i in order:
-				pending.append(index.files[i])
-				coordinates[index.files[i]]=index.coordinates[i]
+				pending.append(files[i])
+				coordinates[files[i]]=index.coordinates[i]
 			return
 	# The same generator works for uncached chunks; only one low-priority task runs at a time.
 	for coordinate in settings.coordinates():

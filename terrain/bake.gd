@@ -17,7 +17,6 @@ func bake() -> void:
 			quit(1)
 			return
 		index.coordinates.append(coordinate)
-		index.files.append(path)
 		triangles+=data.mesh.surface_get_array_index_len(0)/3
 		if index.files.size()%10==0: print('Terrain bake: ',index.files.size(),' chunks; ',triangles,' triangles; ',(Time.get_ticks_msec()-start)/1000.0,' seconds')
 	ResourceSaver.save(index,'res://terrain/baked/index.tres')

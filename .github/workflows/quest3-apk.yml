@@ -96,6 +96,23 @@ jobs:
           cat "$RUNNER_TEMP/ocean-runtime.log"
           if grep -E 'SCRIPT ERROR|ERROR:|Validation Error|VUID-|SYNC-HAZARD' "$RUNNER_TEMP/ocean-runtime.log"; then exit 1; fi
           godot --headless --path . --export-debug 'Meta Quest' artifacts/AbyssOcean-Quest3.apk
+          python3 - <<'PYAPK'
+          from pathlib import Path
+          import os, zipfile
+          target=Path(os.environ['RUNNER_TEMP'])/'exported-runtime'
+          with zipfile.ZipFile('artifacts/AbyssOcean-Quest3.apk') as apk:
+              for name in apk.namelist():
+                  if name.startswith('assets/') and not name.endswith('/'):
+                      path=target/name[7:]
+                      path.parent.mkdir(parents=True,exist_ok=True)
+                      path.write_bytes(apk.read(name))
+          # Android-only native libraries cannot load in the desktop data probe.
+          # All exported game scripts, resources and settings remain unmodified.
+          (target/'.godot/extension_list.cfg').write_text('')
+          PYAPK
+          godot --headless --fixed-fps 60 --path "$RUNNER_TEMP/exported-runtime" --script "$GITHUB_WORKSPACE/.github/tests/exported_package.gd" > "$RUNNER_TEMP/exported-package.log" 2>&1 || { cat "$RUNNER_TEMP/exported-package.log"; exit 1; }
+          cat "$RUNNER_TEMP/exported-package.log"
+          if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/exported-package.log"; then exit 1; fi
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs artifacts/AbyssOcean-Quest3.apk | tee "$RUNNER_TEMP/signing.txt"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree artifacts/AbyssOcean-Quest3.apk AndroidManifest.xml > "$RUNNER_TEMP/manifest.txt"
           python3 - <<'PY'
