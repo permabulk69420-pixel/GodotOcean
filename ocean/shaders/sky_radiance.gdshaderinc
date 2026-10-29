@@ -52,7 +52,9 @@ vec3 refracted_sky(vec3 direction) {
  vec3 scattering=pow(incident*(1.0-extinction),vec3(1.5));
  scattering*=mix(vec3(1.0),pow(incident*extinction,vec3(0.5)),clamp(pow(1.0-sun_zenith,5.0),0.0,1.0));
  scattering*=mix(sky_ground_color,vec3(1.0),smoothstep(-0.1,0.1,direction.y));
- float disk=smoothstep(cos(0.008726646),cos(0.004363323),cosine);
+ // Compare ray directions directly to avoid near-identical cosine thresholds.
+ float separation=length(direction-sky_sun_direction);
+ float disk=1.0-smoothstep(0.00436332,0.00872662,separation);
  vec3 color=scattering+energy*extinction*disk*sky_sun_color;
  return pow(max(color,vec3(0.0)),vec3(1.0/(1.2+1.2*fade)));
 }
