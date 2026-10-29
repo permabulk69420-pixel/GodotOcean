@@ -6,6 +6,7 @@ const RIGHT = preload('res://player/hands/RightHand.glb')
 const SKIN_COLOUR = preload('res://player/hands/skin-colour.jpg')
 const SKIN_NORMAL = preload('res://player/hands/skin-normal.jpg')
 const MATERIAL_SHADER = preload('res://terrain/terrain.gdshader')
+const GRIP_FIT = preload('res://player/hand_grip_data.gd')
 
 @export var left_hand := true
 var controller: XRController3D
@@ -49,8 +50,8 @@ func _ready() -> void:
 func pose(squeeze: float, trigger: float) -> void:
 	var clip := 'Open'
 	var amount := 0.0
-	# Keep the authored cylindrical Grip while holding, so the trigger never
-	# changes the hand to a closed fist through the solid handle.
+	# The fitted per-joint pose closes against the actual handle rather than
+	# forcing the entire hand to the endpoint of the generic Grip animation.
 	if holding:
 		clip = 'Grip'
 		amount = 1.0
@@ -66,7 +67,13 @@ func pose(squeeze: float, trigger: float) -> void:
 		animator.pause()
 		last_pose = clip
 		last_amount = amount
+	if holding:
+		var rotations: Dictionary = GRIP_FIT.LEFT_ROTATIONS if left_hand else GRIP_FIT.RIGHT_ROTATIONS
+		for bone_name in rotations:
+			skeleton.set_bone_pose_rotation(skeleton.find_bone(bone_name), rotations[bone_name])
 	skeleton.force_update_all_bone_transforms()
 	if object_grip.is_inside_tree():
 		object_grip.global_transform = skeleton.global_transform * skeleton.get_bone_global_pose(grip_bone)
+		if holding:
+			object_grip.global_position += controller.global_basis * (GRIP_FIT.LEFT_OFFSET if left_hand else GRIP_FIT.RIGHT_OFFSET)
 	visible = controller.get_is_active() and controller.get_has_tracking_data()

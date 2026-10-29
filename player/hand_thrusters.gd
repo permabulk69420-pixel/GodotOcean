@@ -36,29 +36,34 @@ func spawn_motors() -> void:
 	for side in range(2):
 		var motor := Node3D.new()
 		motor.name = 'LeftThruster' if side == 0 else 'RightThruster'
-		var visual: Node3D = (MODEL_LEFT if side == 0 else MODEL).instantiate()
-		motor.add_child(visual)
-		for mesh: MeshInstance3D in visual.find_children('*', 'MeshInstance3D', true, false):
-			var source := mesh.mesh.surface_get_material(0)
-			if not materials.has(source):
-				var material := ShaderMaterial.new()
-				material.shader = MATERIAL_SHADER
-				material.set_shader_parameter('surface_kind', 1)
-				material.set_shader_parameter('tint', source.albedo_color)
-				material.set_shader_parameter('roughness', source.roughness)
-				material.set_shader_parameter('metalness', source.metallic)
-				material.set_shader_parameter('emitted', Vector3(source.emission.r, source.emission.g, source.emission.b) * source.emission_energy_multiplier)
-				materials[source] = material
-			mesh.material_override = materials[source]
-			mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var grip: Node3D = visual.find_child('GripPoint', true, false)
-		assert(grip, 'Thruster model must contain its authored handle socket')
-		visual.transform = grip.transform.affine_inverse()
+		var visual := create_visual(motor, side)
 		player.get_parent().add_child(motor)
 		motor.global_position = player.head.global_position + forward * 0.9 + right * (-0.36 if side == 0 else 0.36) + Vector3.DOWN * 0.22
 		motor.global_basis = Basis.looking_at(forward)
 		motors.append(motor)
 		propellers.append(visual.find_child('Propeller', true, false))
+
+func create_visual(motor: Node3D, side: int) -> Node3D:
+	var visual: Node3D = (MODEL_LEFT if side == 0 else MODEL).instantiate()
+	motor.add_child(visual)
+	for mesh: MeshInstance3D in visual.find_children('*', 'MeshInstance3D', true, false):
+		var source := mesh.mesh.surface_get_material(0)
+		if not materials.has(source):
+			var material := ShaderMaterial.new()
+			material.shader = MATERIAL_SHADER
+			material.set_shader_parameter('surface_kind', 1)
+			material.set_shader_parameter('tint', source.albedo_color)
+			material.set_shader_parameter('roughness', source.roughness)
+			material.set_shader_parameter('metalness', source.metallic)
+			material.set_shader_parameter('emitted', Vector3(source.emission.r, source.emission.g, source.emission.b) * source.emission_energy_multiplier)
+			materials[source] = material
+		mesh.material_override = materials[source]
+		mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var grip: Node3D = visual.find_child('GripPoint', true, false)
+	assert(grip, 'Thruster model must contain its authored handle socket')
+	visual.transform = grip.transform.affine_inverse()
+	motor.set_meta('model_side', side)
+	return visual
 
 func try_grab(side: int) -> void:
 	if held[side] or not hands[side].object_grip.is_inside_tree(): return
@@ -71,6 +76,13 @@ func try_grab(side: int) -> void:
 			closest = motor
 			distance = candidate
 	if not closest: return
+	if closest.get_meta('model_side', -1) != side:
+		var index := motors.find(closest)
+		for child in closest.get_children():
+			closest.remove_child(child)
+			child.queue_free()
+		var visual := create_visual(closest, side)
+		propellers[index] = visual.find_child('Propeller', true, false)
 	hands[side].holding = true
 	hands[side].pose(1.0, 0.0)
 	closest.reparent(hands[side].object_grip, false)

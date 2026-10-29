@@ -1,12 +1,16 @@
 """Run with blender --background --python tools/make_hand_thruster.py."""
 import bpy
 import math
+import json
 from pathlib import Path
-from mathutils import Vector
+from mathutils import Vector, Matrix
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT = ROOT / 'player' / 'thrusters'
 OUTPUT.mkdir(parents=True, exist_ok=True)
+FIT = json.loads((ROOT/'tools'/'thruster_fit.json').read_text())
+BODY_X = max(value['body_x'] for value in FIT.values())
+HANDLE_FRAME = Matrix(FIT['right']['handle_frame'])
 bpy.ops.object.select_all(action='SELECT')
 bpy.ops.object.delete(use_global=False)
 
@@ -50,7 +54,8 @@ def mesh(name, vertices, faces, mat, parent=None):
     return obj
 
 
-def lathe(name, profile, mat, center=(.082, .022, .07), parent=None, count=64):
+def lathe(name, profile, mat, center=None, parent=None, count=64):
+    center = (BODY_X,.022,.07) if center is None else center
     verts = []
     for z, radius in profile:
         for i in range(count):
@@ -100,19 +105,37 @@ def build():
     lathe('Exhaust collar', [(.179,.036),(.188,.035),(.200,.029),(.201,.025),(.196,.024),(.182,.027),(.179,.036)], titanium, parent=body)
     lathe('Exhaust status ring', [(.193,.031),(.198,.030),(.201,.028),(.201,.025),(.198,.025),(.193,.031)], light, parent=body)
     # Low side panels merge with the pod; no motor perched over a pistol grip.
-    ellipsoid('Inlaid outer panel', (.121,.028,.070), (.014,.021,.139), teal, body, 32, 12)
-    ellipsoid('Lower graphite keel', (.085,-.013,.087), (.030,.009,.135), graphite, body, 24, 10)
-    ellipsoid('Upper spine', (.083,.056,.055), (.018,.007,.115), titanium, body, 24, 10)
-    ellipsoid('Recessed status strip', (.132,.032,.082), (.0017,.0025,.085), light, body, 20, 8)
+    ellipsoid('Inlaid outer panel', (BODY_X+.039,.028,.070), (.014,.021,.139), teal, body, 32, 12)
+    ellipsoid('Lower graphite keel', (BODY_X+.003,-.013,.087), (.030,.009,.135), graphite, body, 24, 10)
+    ellipsoid('Upper spine', (BODY_X+.001,.056,.055), (.018,.007,.115), titanium, body, 24, 10)
+    ellipsoid('Recessed status strip', (BODY_X+.050,.032,.082), (.0017,.0025,.085), light, body, 20, 8)
     # Palm bar is the origin. An open, curved C-frame joins it to the side pod.
-    ellipsoid('Recessed palm grip', (0,0,0), (.0155,.046,.0185), graphite, body)
-    ellipsoid('Index trigger', (0,.029,-.019), (.013,.014,.006), teal, body)
-    for i in range(6):
-        ellipsoid('Grip rib', (0,-.032+i*.011,.001), (.016,.0018,.0187), graphite, body, 16, 6)
-    for y in [-.043,.043]:
-        points=[(0,y,0),(.016,y,.006),(.035,y*.93,.022),(.054,y*.76,.043),(.074,y*.53,.060)]
-        for a,b in zip(points,points[1:]): beam('Curved titanium bridge',a,b,.0085,pearl,body,16)
-        for a in points[1:-1]: ellipsoid('Bridge fillet',a,(.009,.009,.010),pearl,body,16,8)
+    # Orient the grip itself to the imported palm's actual grasp frame. The pod
+    # remains aligned to the forearm; the handle no longer cuts across the palm.
+    profile=[(-.057,.1),(-.055,.5),(-.048,.90),(-.040,1),(-.034,1.015),(-.032,1),(-.023,1.015),(-.021,1),(-.012,1.015),(-.010,1),(-.001,1.015),(.001,1),(.010,1.015),(.012,1),(.021,1.015),(.023,1),(.040,1),(.048,.90),(.055,.5),(.057,.1)]
+    vertices=[]
+    for y,r in profile:
+        for i in range(48):
+            angle=2*math.pi*i/48
+            vertices.append(tuple(HANDLE_FRAME@Vector((.0165*r*math.cos(angle),y,.0205*r*math.sin(angle)))))
+    faces=[]
+    for ring in range(len(profile)-1):
+        for i in range(48):
+            a=ring*48+i;b=ring*48+(i+1)%48
+            faces.append((a,b,b+48,a+48))
+    faces.extend([tuple(reversed(range(48))),tuple((len(profile)-1)*48+i for i in range(48))])
+    mesh('Fitted palm grip',vertices,faces,graphite,body)
+    trigger_center=HANDLE_FRAME@Vector((0,.029,-.0205))
+    trigger=ellipsoid('Index trigger',trigger_center,(.010,.012,.002),teal,body)
+    conversion=Matrix(((1,0,0),(0,0,-1),(0,1,0)))
+    mirror=Matrix.Diagonal((SIDE,1,1))
+    trigger.rotation_euler=(conversion@mirror@HANDLE_FRAME@mirror@conversion.inverted()).to_euler()
+    for direction in [-1,1]:
+        start=HANDLE_FRAME@Vector((0,direction*.067,0))
+        points=[tuple(start),tuple(start+Vector((.016,0,.006))),(BODY_X*.55,start.y,.025+start.z),(BODY_X-.035,start.y*.85,.060),(BODY_X-.008,.022+direction*.018,.065)]
+        beam('Grip end support',tuple(HANDLE_FRAME@Vector((0,direction*.055,0))),tuple(start),.0055,graphite,body,16)
+        for a,b in zip(points,points[1:]): beam('Curved titanium bridge',a,b,.0055,pearl,body,16)
+        for a in points[1:-1]: ellipsoid('Bridge fillet',a,(.006,.006,.007),pearl,body,16,8)
     # A slim open saddle trails along the outside of the wrist, leaving the palm free.
     for z in [.174,.192]:
         points=[]
@@ -124,15 +147,15 @@ def build():
         beam('Wrist support spar',(x,-.024,.13),(x,-.024,.195),.005,titanium,body,12)
     for i in range(3):
         z=-.005+i*.027
-        ellipsoid('Inset cooling vent',(.129,.013,z),(.002,.008,.008),graphite,body,16,8)
+        ellipsoid('Inset cooling vent',(BODY_X+.047,.013,z),(.002,.008,.008),graphite,body,16,8)
     # Sparse grille and visible, independently animated hydrofoil impeller.
     for i in range(5):
         a=i*2*math.pi/5
-        beam('Intake guard',(.082,.022,-.104),(.082+.026*math.cos(a),.022+.020*math.sin(a),-.104),.0016,titanium,body,10)
-    ellipsoid('Intake centre',(.082,.022,-.104),(.006,.006,.006),pearl,body,16,8)
+        beam('Intake guard',(BODY_X,.022,-.104),(BODY_X+.026*math.cos(a),.022+.020*math.sin(a),-.104),.0016,titanium,body,10)
+    ellipsoid('Intake centre',(BODY_X,.022,-.104),(.006,.006,.006),pearl,body,16,8)
     rotor=bpy.data.objects.new('Propeller',None)
     bpy.context.collection.objects.link(rotor)
-    rotor.location=point((.082,.022,.245))
+    rotor.location=point((BODY_X,.022,.245))
     ellipsoid('Impeller hub',(0,0,0),(.007,.007,.012),titanium,rotor,20,10)
     for i in range(5):
         a=2*math.pi*i/5
@@ -150,7 +173,7 @@ def build():
     grip.empty_display_size=.025
     axis=bpy.data.objects.new('ThrustAxis',None)
     bpy.context.collection.objects.link(axis)
-    axis.location=point((.082,.022,.07))
+    axis.location=point((BODY_X,.022,.07))
     for mat in [pearl,graphite,titanium,teal,light]:
         bpy.ops.object.select_all(action='DESELECT')
         pieces=[o for o in list(bpy.data.objects) if o.type=='MESH' and o.parent==body and o.data.materials[0]==mat]
