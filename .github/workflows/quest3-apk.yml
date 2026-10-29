@@ -1,6 +1,9 @@
 name: Abyss Ocean Quest 3 APK
 
 on:
+  push:
+    branches:
+      - codex/abyss-ocean
   workflow_dispatch:
 
 concurrency:
