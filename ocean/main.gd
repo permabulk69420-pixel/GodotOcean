@@ -41,6 +41,8 @@ func _ready() -> void:
 	if not xr or not xr.is_initialized(): xr = XRServer.find_interface("OpenXR")
 	if xr and (xr.is_initialized() or (OS.has_feature("android") and xr.initialize())):
 		get_viewport().use_xr = true
+		# Mobile Vulkan uses XR variable-rate shading for fixed foveated rendering.
+		get_viewport().vrs_mode = Viewport.VRS_XR
 		if xr.has_method("get_available_display_refresh_rates"):
 			var rates = xr.get_available_display_refresh_rates()
 			if rates.has(120.0): xr.set_display_refresh_rate(120.0)

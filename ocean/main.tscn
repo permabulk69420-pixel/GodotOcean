@@ -37,7 +37,7 @@ fog_light_color = Color(0.55, 0.72, 0.79, 1)
 fog_density = 0.00012
 fog_sun_scatter = 0.2
 fog_sky_affect = 0.0
-glow_enabled = true
+glow_enabled = false
 glow_intensity = 0.45
 glow_bloom = 0.08
 
