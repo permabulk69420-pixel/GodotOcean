@@ -28,8 +28,11 @@ void fragment() {
  AO_LIGHT_AFFECT = 0.0;
  SPECULAR = 0.5;
  if (surface_kind > 0) {
-  ALBEDO = tint.rgb * texture(colour_map, UV * uv_scale).rgb;
+  // Procedural housings have no texture UVs. Only the imported skin samples
+  // UV textures; sampling a missing UV channel produces undefined derivatives.
+  ALBEDO = tint.rgb;
   if (surface_kind == 2) {
+   ALBEDO *= texture(colour_map, UV * uv_scale).rgb;
    vec3 detail = texture(normal_map, UV * uv_scale).rgb * 2.0 - 1.0;
    detail.xy *= normal_strength;
    // Derive the skin's cotangent frame from the posed surface. Equipment and
