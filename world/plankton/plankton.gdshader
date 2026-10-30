@@ -43,7 +43,7 @@ void vertex() {
 
 	// Bright flare where something moved through recently, fading over a few seconds.
 	float flare = 0.0;
-	for (int i = 0; i < TRAIL_COUNT; i++) {
+	for (int i = 0; i < TRAIL_COUNT && flare_strength > 0.0; i++) {
 		float age = now - trail[i].w;
 		if (age >= 0.0 && age < 7.0) {
 			float radius = 1.2 + trail_power[i] * 2.0;
