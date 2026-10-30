@@ -64,8 +64,8 @@ def clump(name, seed, blades, min_len, max_len, spread, segments=5):
 material = bpy.data.materials.new('Seagrass')
 material.diffuse_color = (0.12, 0.38, 0.14, 1)
 for name, seed, blades, lo, hi, spread in [
-    ('SeagrassShort', 11, 13, 0.45, 0.95, 0.22),
-    ('SeagrassTall', 29, 10, 1.05, 1.85, 0.28),
+    ('SeagrassShort', 11, 13, 0.40, 0.80, 0.22),
+    ('SeagrassTall', 29, 10, 0.85, 1.40, 0.28),
 ]:
     obj = clump(name, seed, blades, lo, hi, spread)
     obj.data.materials.append(material)

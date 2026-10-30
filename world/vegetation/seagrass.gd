@@ -62,8 +62,8 @@ func _ready() -> void:
 			if Vector2(x, z).distance_to(Vector2(entrance.x, entrance.z)) < keep_clear_of_entrances: near_entrance = true
 		if near_entrance: continue
 		var tall := rng.randf() < tall_fraction
-		var scale := rng.randf_range(0.8, 1.35)
-		var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(scale, scale * rng.randf_range(0.85, 1.35), scale))
+		var scale := rng.randf_range(0.85, 1.2)
+		var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(scale, scale * rng.randf_range(0.9, 1.1), scale))
 		var key := Vector3i(floori(x / cell_size), int(tall), floori(z / cell_size))
 		if not cells.has(key): cells[key] = []
 		cells[key].append(Transform3D(basis, Vector3(x, ground - 0.04, z)))

@@ -64,6 +64,7 @@ shadow_enabled = false
 
 [node name="Ocean" type="Node3D" parent="."]
 script = ExtResource("2")
+sea_level = 8.0
 settings = SubResource("OceanSettings")
 
 [node name="Terrain" type="Node3D" parent="."]
