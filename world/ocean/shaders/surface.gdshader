@@ -12,6 +12,16 @@ uniform vec3 absorption = vec3(0.28, 0.065, 0.028);
 uniform vec3 deep_color : source_color = vec3(0.008, 0.055, 0.085);
 uniform vec3 shallow_color : source_color = vec3(0.025, 0.32, 0.29);
 uniform vec3 foam_color : source_color = vec3(0.92, 0.98, 0.96);
+// Light from the giant mushroom spilling onto the water around it. mushroom.gd sets the
+// source (the glowing cap); the colours and pulse speed match mushroom.gdshader.
+// glow_strength = 0 switches it off.
+uniform vec3 glow_source = vec3(0.0);
+uniform float glow_strength = 0.0;
+uniform float glow_radius = 60.0;
+uniform vec3 glow_low : source_color = vec3(0.03, 0.80, 0.70);
+uniform vec3 glow_high : source_color = vec3(0.45, 0.20, 1.0);
+uniform float glow_pulse_speed = 0.10;
+uniform float glow_day = 0.30;
 varying vec3 ocean_position;
 varying vec3 ocean_normal;
 varying float wave_compression;
@@ -74,6 +84,25 @@ void fragment() {
 	ALBEDO = mix(scatter * 0.10, foam_color, foam);
 	EMISSION = transmitted * (1.0 - fresnel) * (1.0 - foam);
 	EMISSION += shallow_color * max(crest_height, 0.0) * pow(1.0 - facing, 3.0) * 0.12 * light_level;
+	if (glow_strength > 0.0) {
+		vec3 to_source = glow_source - ocean_position;
+		float spread = length(to_source.xz);
+		// A tight teal pool from the stalk under a wide violet one from the cap. A slow wave
+		// runs outward through both, so the water pulses with the mushroom. fract() keeps the
+		// time small enough for the headset's precision.
+		float pool = exp(-pow(spread / glow_radius, 2.0));
+		float core = exp(-spread / (glow_radius * 0.2));
+		float wave = 0.5 + 0.5 * sin(TAU * fract(TIME * glow_pulse_speed) - spread * 0.05);
+		vec3 spill = (glow_high * pool * 0.10 + glow_low * core * 0.35) * mix(0.6, 1.0, wave);
+		if (FRONT_FACING) {
+			// The cap mirrored in the wave facets: glints that stretch out toward the mushroom.
+			vec3 mirror = reflect(-eye_direction, world_normal);
+			float glints = pow(max(dot(mirror, normalize(to_source)), 0.0), 160.0);
+			spill += glow_high * glints * exp(-spread / (glow_radius * 2.5)) * 3.0;
+		}
+		// Dimmed, never removed, while the sun is up, like the mushroom itself.
+		EMISSION += spill * glow_strength * mix(1.0, glow_day, day_amount) * (1.0 - foam);
+	}
 	ROUGHNESS = mix(0.055 + (1.0 - facing) * 0.025, 0.65, foam);
 	SPECULAR = 0.25;
 	METALLIC = 0.0;

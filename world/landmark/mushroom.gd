@@ -6,8 +6,13 @@ extends Node3D
 const MODEL := preload('res://world/landmark/giant_mushroom.glb')
 const SHADER := preload('res://world/landmark/mushroom.gdshader')
 
+## Where the glowing cap sits in the model; the water's glow is cast from here.
+const CAP_CENTRE := Vector3(4.69, 81.66, -3.93)
+
 ## World x and z of the base; the height comes from the terrain.
 @export var base_xz := Vector2(-24.0, 22.0)
+## How strongly the mushroom lights the water around it; 0 turns that off.
+@export var water_glow := 1.0
 
 var materials: Array[ShaderMaterial] = []
 
@@ -25,6 +30,13 @@ func _ready() -> void:
 	var terrain := get_node_or_null('../Terrain') as AbyssTerrain
 	var ground := terrain.generator.height(base_xz.x, base_xz.y) if terrain and terrain.generator else -8.0
 	global_position = Vector3(base_xz.x, ground, base_xz.y)
+	light_water()
+
+func light_water() -> void:
+	var ocean := get_node_or_null('../Ocean') as AbyssOcean
+	if ocean == null or ocean.material == null: return
+	ocean.material.set_shader_parameter('glow_source', global_position + CAP_CENTRE)
+	ocean.material.set_shader_parameter('glow_strength', water_glow)
 
 func convert_material(source: BaseMaterial3D) -> ShaderMaterial:
 	var material := ShaderMaterial.new()
