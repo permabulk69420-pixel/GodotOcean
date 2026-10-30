@@ -20,7 +20,10 @@ const MOON_COLOUR := Color(0.45, 0.58, 1.0)
 const SUN_ENERGY := 1.6
 const MOON_ENERGY := 0.035
 # How fast each colour of light is absorbed per metre of water (red goes first, blue lasts longest).
-const ABSORPTION := Vector3(0.20, 0.05, 0.022)
+# Gentler than real sea water so reds and yellows on the reef survive the first 10-15 m.
+const ABSORPTION := Vector3(0.075, 0.03, 0.02)
+# Sunlight bends towards straight down as it enters the water (1.333 is water's refractive index).
+const WATER_INDEX := 1.333
 const FOG_DARKENING_PER_METRE := 0.04
 const AMBIENT_DARKENING_PER_METRE := 0.045
 const FOG_DENSITY_PER_METRE := 0.0012
@@ -29,7 +32,9 @@ const FOG_DENSITY_PER_METRE := 0.0012
 # fog also tints the sky (sky_affect) so it is a faint deep blue instead of pure black.
 const SURFACE_DAY := {ambient = Color(0.28, 0.45, 0.55), ambient_energy = 0.45, fog = Color(0.55, 0.72, 0.79), fog_density = 0.00012, sun_scatter = 0.2, sky_affect = 0.0}
 const SURFACE_NIGHT := {ambient = Color(0.035, 0.07, 0.16), ambient_energy = 0.45, fog = Color(0.006, 0.014, 0.036), fog_density = 0.00035, sun_scatter = 0.0, sky_affect = 1.0}
-const UNDERWATER_DAY := {ambient = Color(0.06, 0.32, 0.40), ambient_energy = 0.38, fog = Color(0.014, 0.17, 0.25), fog_density = 0.045, sun_scatter = 0.0, sky_affect = 1.0}
+# Under the water the fog colour itself comes from the underwater sky (aerial perspective, set up
+# in main.gd), so the fog colours here only matter as a fallback.
+const UNDERWATER_DAY := {ambient = Color(0.06, 0.32, 0.40), ambient_energy = 0.75, fog = Color(0.014, 0.17, 0.25), fog_density = 0.034, sun_scatter = 0.0, sky_affect = 1.0}
 const UNDERWATER_NIGHT := {ambient = Color(0.012, 0.05, 0.11), ambient_energy = 0.4, fog = Color(0.002, 0.011, 0.026), fog_density = 0.050, sun_scatter = 0.0, sky_affect = 1.0}
 
 var time := 0.0
@@ -41,6 +46,8 @@ var sun_energy := SUN_ENERGY
 var moon_energy := 0.0
 var sun_colour := DAY_SUN_COLOUR
 var sky_timer := 0.0
+var underwater_sky_day := -1.0
+var underwater_sky_depth := -1.0
 
 func _ready() -> void:
 	time = start_time
@@ -91,7 +98,7 @@ func apply_environment(environment: Environment, day: Dictionary, night: Diction
 	environment.fog_sun_scatter = lerpf(night.sun_scatter, day.sun_scatter, amount)
 	environment.fog_sky_affect = lerpf(night.sky_affect, day.sky_affect, amount)
 
-func apply(sun: DirectionalLight3D, sky_sun: DirectionalLight3D, surface: Environment, underwater: Environment, water: ShaderMaterial, terrain: ShaderMaterial, delta: float, depth: float = 0.0) -> void:
+func apply(sun: DirectionalLight3D, sky_sun: DirectionalLight3D, surface: Environment, underwater: Environment, water: ShaderMaterial, terrain: ShaderMaterial, delta: float, depth: float = 0.0, underwater_sky: ShaderMaterial = null) -> void:
 	var direction := light_direction()
 	face_light(sun, direction)
 	sun.light_color = absorb(light_colour(), depth)
@@ -101,6 +108,8 @@ func apply(sun: DirectionalLight3D, sky_sun: DirectionalLight3D, surface: Enviro
 		face_light(sky_sun, sun_direction)
 		sky_sun.light_color = sun_colour
 		sky_sun.light_energy = maxf(sun_energy, 0.001)
+	if underwater_sky:
+		update_underwater_sky(underwater_sky, depth)
 	apply_environment(surface, SURFACE_DAY, SURFACE_NIGHT)
 	apply_environment(underwater, UNDERWATER_DAY, UNDERWATER_NIGHT)
 	apply_depth(underwater, depth)
@@ -108,6 +117,29 @@ func apply(sun: DirectionalLight3D, sky_sun: DirectionalLight3D, surface: Enviro
 	water.set_shader_parameter("sky_sun_color", sun_colour)
 	water.set_shader_parameter("day_amount", daylight)
 	terrain.set_shader_parameter("sun_shadow_strength", daylight)
+	update_underwater_light()
+
+## The sun's direction once it has bent into the water (always pointing up towards the surface).
+func underwater_sun_direction() -> Vector3:
+	var across := Vector2(sun_direction.x, sun_direction.z) / WATER_INDEX
+	return Vector3(across.x, sqrt(maxf(1.0 - across.length_squared(), 0.0)), across.y)
+
+## Values every underwater shader reads (world/ocean/shaders/underwater_light.gdshaderinc).
+func update_underwater_light() -> void:
+	RenderingServer.global_shader_parameter_set(&"underwater_sun_direction", underwater_sun_direction())
+	# Caustics need a reasonably high sun; they fade out through sunset and are off at night.
+	RenderingServer.global_shader_parameter_set(&"underwater_caustics", smoothstep(0.06, 0.35, sun_direction.y))
+
+## The underwater sky only changes when day or depth has moved noticeably (a quarter of a metre
+## is about a 1% change in brightness): every change makes Godot refilter its lighting.
+func update_underwater_sky(material: ShaderMaterial, depth: float) -> void:
+	var stepped_depth := snappedf(maxf(depth, 0.0), 0.25)
+	if absf(daylight - underwater_sky_day) > 0.01 or (daylight != underwater_sky_day and (daylight == 0.0 or daylight == 1.0)):
+		underwater_sky_day = daylight
+		material.set_shader_parameter("day_amount", daylight)
+	if absf(stepped_depth - underwater_sky_depth) > 0.01:
+		underwater_sky_depth = stepped_depth
+		material.set_shader_parameter("depth", stepped_depth)
 
 ## Tint a light colour the way the water does: the deeper you are, the more red is lost.
 func absorb(colour: Color, depth: float) -> Color:

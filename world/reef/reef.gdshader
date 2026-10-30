@@ -3,6 +3,7 @@ shader_type spatial;
 // B = sway weight. Patches of coral are tinted by area so a reef reads as colour zones, and the
 // glow mask lights up at night in each coral's own hue mixed with a bioluminescent teal.
 render_mode cull_disabled;
+#include "res://world/ocean/shaders/underwater_light.gdshaderinc"
 
 uniform sampler2D albedo_map : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D normal_map : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
@@ -17,10 +18,16 @@ uniform float sway_amount = 0.32;
 uniform float sway_speed = 0.9;
 // 0 at night, 1 in full day.
 uniform float day_amount = 0.0;
-uniform float day_glow = 0.18;
+uniform float day_glow = 0.12;
+// By day, coral close to the viewer keeps more of its own colour (reds, oranges, purples) instead
+// of taking on the blue of the water; the effect fades out over near_colour_distance metres.
+uniform vec3 near_colour_boost = vec3(1.75, 1.15, 0.95);
+uniform float near_colour_distance = 9.0;
 
 varying vec3 world_pos;
 varying vec3 vcolour;
+// Caustic brightness for the sun (worked out in fragment, used in light).
+varying float caustic;
 
 float hash21(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -46,12 +53,14 @@ void vertex() {
 }
 
 void fragment() {
+	caustic = caustic_light(world_pos, TIME);
 	vec3 base = texture(albedo_map, UV).rgb;
 	// Kelp (high sway weight) keeps its own green; coral gets the patch tint.
 	float tintable = tint_strength * (1.0 - smoothstep(0.1, 0.45, vcolour.b));
 	vec3 tint = mix(vec3(1.0), patch_tint(hash21(floor(world_pos.xz / patch_size))), tintable);
 	vec3 albedo = base * tint;
-	ALBEDO = albedo;
+	float closeness = 1.0 - smoothstep(1.5, near_colour_distance, length(world_pos - CAMERA_POSITION_WORLD));
+	ALBEDO = min(albedo * mix(vec3(1.0), near_colour_boost, closeness * day_amount), vec3(0.95));
 	vec4 orm = texture(orm_map, UV);
 	AO = orm.r;
 	ROUGHNESS = orm.g;
@@ -64,7 +73,8 @@ void fragment() {
 	float mask = texture(glow_map, UV).r;
 	float m = max(albedo.r, max(albedo.g, albedo.b));
 	vec3 hue = albedo / max(m, 0.001);
-	vec3 glow_colour = mix(hue, vec3(0.15, 0.85, 1.0), 0.35);
+	// At night the glow leans towards bioluminescent teal; by day it is just the coral's own colour.
+	vec3 glow_colour = mix(hue, vec3(0.15, 0.85, 1.0), 0.35 * (1.0 - day_amount));
 	float wave2 = 0.5 + 0.5 * sin(TIME * pulse_speed * TAU - (vcolour.g * 3.0 + hash21(floor(world_pos.xz * 0.7)) * 4.0));
 	float pulse = mix(0.55, 1.0, wave2);
 	float brightness = mix(1.0, day_glow, day_amount);
@@ -81,13 +91,14 @@ void light() {
 	if (n_dot_l > 0.0 && half_length > 0.001) {
 		vec3 half_vector = half_sum / half_length;
 		float c_n_dot_l = min(n_dot_l, 1.0);
-		float c_n_dot_v = max(dot(NORMAL, VIEW), 0.0001);
+		float c_n_dot_v = clamp(dot(NORMAL, VIEW), 0.0001, 1.0);
 		float c_n_dot_h = clamp(dot(NORMAL, half_vector), 0.0, 1.0);
 		float c_l_dot_h = clamp(dot(LIGHT, half_vector), 0.0, 1.0);
 		float fd90_minus_1 = 2.0 * c_l_dot_h * c_l_dot_h * ROUGHNESS - 0.5;
 		float fd_v = 1.0 + fd90_minus_1 * pow(1.0 - c_n_dot_v, 5.0);
 		float fd_l = 1.0 + fd90_minus_1 * pow(1.0 - c_n_dot_l, 5.0);
-		DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * (fd_v * fd_l * c_n_dot_l / PI);
+		float shaped = LIGHT_IS_DIRECTIONAL ? caustic : 1.0;
+		DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * (fd_v * fd_l * c_n_dot_l / PI) * shaped;
 		float alpha = max(ROUGHNESS * ROUGHNESS, 0.002);
 		float a = c_n_dot_h * alpha;
 		float k = alpha / (1.0 - c_n_dot_h * c_n_dot_h + a * a);
@@ -96,6 +107,6 @@ void light() {
 		vec3 f0 = vec3(0.16 * 0.35 * 0.35);
 		float f90 = clamp(dot(f0, vec3(50.0 * 0.33)), 0.0, 1.0);
 		vec3 fresnel_term = f0 + (f90 - f0) * pow(1.0 - c_l_dot_h, 5.0);
-		SPECULAR_LIGHT += min(c_n_dot_l * d * g * fresnel_term * LIGHT_COLOR * ATTENUATION * SPECULAR_AMOUNT, vec3(2000.0));
+		SPECULAR_LIGHT += min(c_n_dot_l * d * g * fresnel_term * LIGHT_COLOR * ATTENUATION * SPECULAR_AMOUNT * shaped, vec3(2000.0));
 	}
 }

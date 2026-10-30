@@ -5,6 +5,13 @@ uniform sampler2D cached_displacement : filter_nearest;
 uniform sampler2D cached_normals : filter_nearest;
 uniform bool cache_ready = false;
 #include "res://world/ocean/shaders/sky_radiance.gdshaderinc"
+#include "res://world/ocean/shaders/underwater_water.gdshaderinc"
+// Seen from below, how much of the small ripple detail bends the light (1 = same as from above).
+// Lower values keep the bright window overhead smooth and wavy instead of broken into specks.
+uniform float underside_detail = 0.3;
+// Brightness of the sky seen through the window overhead, and of the sun inside it.
+uniform float underside_window_brightness = 1.0;
+uniform float underside_sun_glare = 4.0;
 
 uniform sampler2D detail_normals : repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D detail_texture : repeat_enable, filter_linear_mipmap_anisotropic;
@@ -72,13 +79,28 @@ void fragment() {
 	float light_level = mix(0.035, 1.0, day_amount);
 	vec3 transmitted = scatter * (1.0 - transmission) * light_level;
 	if (!FRONT_FACING) {
-		world_normal = -world_normal;
-		float internal = 1.0 - smoothstep(0.61, 0.69, dot(world_normal, eye_direction));
-		vec3 ray=refract(-eye_direction,world_normal,1.333);
-		vec3 sky=length(ray)>0.001 ? refracted_sky(normalize(ray)) : shallow_color*0.35;
-		transmitted = mix(sky, shallow_color * 0.35 * light_level, internal);
+		// Seen from below. Light from the sky only gets through inside a cone overhead (Snell's
+		// window, about 49 degrees from straight up); outside it the surface acts as a mirror and
+		// shows the water below. A smoother normal keeps the window's edge wavy and clean.
+		vec3 detail = vec3(gradient.x + fine.x * 0.2727, 0.0, gradient.y + fine.y * 0.2727) * underside_detail;
+		world_normal = -normalize(ocean_normal + detail);
+		float cos_view = clamp(dot(world_normal, eye_direction), 0.0, 1.0);
+		float window = smoothstep(0.63, 0.75, cos_view);
+		vec3 ray = refract(-eye_direction, world_normal, 1.333);
+		vec3 sky_through = vec3(0.0);
+		if (dot(ray, ray) > 0.000001) {
+			vec3 air = normalize(ray);
+			float toward_sun = clamp(dot(air, normalize(sky_sun_direction)), 0.0, 1.0);
+			float sun_up = smoothstep(-0.05, 0.2, sky_sun_direction.y);
+			// Sky seen through the water is a little bluer than from above.
+			sky_through = refracted_sky(air) * vec3(0.78, 0.92, 1.08) * underside_window_brightness
+				+ sky_sun_color * sun_up * underside_sun_glare * (pow(toward_sun, 900.0) * 8.0 + pow(toward_sun, 60.0) * 0.25);
+		}
+		// At night the mirrored part keeps the faint teal it always had.
+		vec3 mirrored = mix(shallow_color * 0.35 * 0.035, underwater_water_colour(reflect(-eye_direction, world_normal), sky_sun_direction, 1.0, 1.5, 0.0), day_amount);
+		transmitted = mix(mirrored, sky_through, window);
 		fresnel = 0.0;
-		foam *= 0.25;
+		foam *= 0.08;
 	}
 	NORMAL = normalize((VIEW_MATRIX * vec4(world_normal, 0.0)).xyz);
 	ALBEDO = mix(scatter * 0.10, foam_color, foam);
@@ -120,7 +142,7 @@ void light() {
 	if (n_dot_l > 0.0 && half_length > 0.001) {
 		vec3 half_vector = half_sum / half_length;
 		float c_n_dot_l = min(n_dot_l, 1.0);
-		float c_n_dot_v = max(dot(NORMAL, VIEW), 0.0001);
+		float c_n_dot_v = clamp(dot(NORMAL, VIEW), 0.0001, 1.0);
 		float c_n_dot_h = clamp(dot(NORMAL, half_vector), 0.0, 1.0);
 		float c_l_dot_h = clamp(dot(LIGHT, half_vector), 0.0, 1.0);
 
