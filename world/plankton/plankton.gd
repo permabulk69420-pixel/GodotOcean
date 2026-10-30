@@ -10,6 +10,8 @@ const SHADER := preload('res://world/plankton/plankton.gdshader')
 @export var volume_size := 16.0
 ## Seconds between trail samples; with 64 slots this decides how long a trail lasts.
 @export var sample_interval := 0.16
+## 0 keeps every speck the same deep blue; above 0 they brighten near recent movement.
+@export var flare_strength := 0.0
 
 var material: ShaderMaterial
 var now := 0.0
@@ -36,6 +38,7 @@ func _ready() -> void:
 	custom_aabb = AABB(Vector3.ONE * -volume_size * 0.5, Vector3.ONE * volume_size)
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	material.set_shader_parameter('volume_size', volume_size)
+	material.set_shader_parameter('flare_strength', flare_strength)
 	material.set_shader_parameter('trail', trail)
 	material.set_shader_parameter('trail_power', trail_power)
 
@@ -51,7 +54,7 @@ func update(delta: float, camera_position: Vector3, positions: PackedVector3Arra
 	if previous.size() != positions.size():
 		previous = positions.duplicate()
 	sample_timer += delta
-	if sample_timer >= sample_interval:
+	if flare_strength > 0.0 and sample_timer >= sample_interval:
 		for i in range(positions.size()):
 			var speed := positions[i].distance_to(previous[i]) / maxf(sample_timer, 0.001)
 			var power := clampf(speed * 0.55, 0.0, 1.3) + boosts[i]
