@@ -132,5 +132,5 @@ for side, result in results.items():
     for bone, q in result['rotations'].items():
         lines.append(f'\t&"{bone}": Quaternion({", ".join(f"{v:.10f}" for v in q)}),')
     lines.append('}')
-(ROOT/'player/hand_grip_data.gd').write_text('\n'.join(lines)+'\n')
+(ROOT/'player/hands/hand_grip_data.gd').write_text('\n'.join(lines)+'\n')
 (ROOT/'tools/thruster_fit.json').write_text(json.dumps(results,indent=2)+'\n')

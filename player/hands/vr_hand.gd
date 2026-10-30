@@ -6,7 +6,7 @@ const RIGHT = preload('res://player/hands/RightHand.glb')
 const SKIN_COLOUR = preload('res://player/hands/skin-colour.jpg')
 const SKIN_NORMAL = preload('res://player/hands/skin-normal.jpg')
 const MATERIAL_SHADER = preload('res://terrain/terrain.gdshader')
-const GRIP_FIT = preload('res://player/hand_grip_data.gd')
+const GRIP_FIT = preload('res://player/hands/hand_grip_data.gd')
 
 @export var left_hand := true
 var controller: XRController3D

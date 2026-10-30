@@ -9,7 +9,7 @@ func run() -> void:
 	for side in ['left','right']:
 		var controller=XRController3D.new()
 		root.add_child(controller)
-		var hand=load('res://player/vr_hand.gd').new()
+		var hand=load('res://player/hands/vr_hand.gd').new()
 		hand.left_hand=side=='left'
 		controller.add_child(hand)
 		await process_frame

@@ -6,8 +6,8 @@
 
 [ext_resource type="Script" path="res://terrain/terrain.gd" id="5"]
 [ext_resource type="Script" path="res://player/swimmer.gd" id="6"]
-[ext_resource type="Script" path="res://player/vr_hand.gd" id="7"]
-[ext_resource type="Script" path="res://player/hand_thrusters.gd" id="8"]
+[ext_resource type="Script" path="res://player/hands/vr_hand.gd" id="7"]
+[ext_resource type="Script" path="res://player/thrusters/hand_thrusters.gd" id="8"]
 
 [sub_resource type="CapsuleShape3D" id="SwimmerShape"]
 radius = 0.28
