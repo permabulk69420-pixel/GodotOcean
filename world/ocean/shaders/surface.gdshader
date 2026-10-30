@@ -76,3 +76,38 @@ void fragment() {
 	SPECULAR = 0.25;
 	METALLIC = 0.0;
 }
+
+// Godot's Mobile renderer runs its built-in light maths in half precision on the Quest.
+// Looking up at the sun from underwater makes VIEW + LIGHT vanish, so its normalize()
+// returns NaN and blanks a small square, even though the underside receives no direct
+// light. This reproduces the default Burley diffuse + GGX specular in full precision and
+// skips surfaces turned away from the light.
+void light() {
+	float n_dot_l = dot(NORMAL, LIGHT);
+	vec3 half_sum = LIGHT + VIEW;
+	float half_length = length(half_sum);
+	if (n_dot_l > 0.0 && half_length > 0.001) {
+		vec3 half_vector = half_sum / half_length;
+		float c_n_dot_l = min(n_dot_l, 1.0);
+		float c_n_dot_v = max(dot(NORMAL, VIEW), 0.0001);
+		float c_n_dot_h = clamp(dot(NORMAL, half_vector), 0.0, 1.0);
+		float c_l_dot_h = clamp(dot(LIGHT, half_vector), 0.0, 1.0);
+
+		float fd90_minus_1 = 2.0 * c_l_dot_h * c_l_dot_h * ROUGHNESS - 0.5;
+		float fd_v = 1.0 + fd90_minus_1 * pow(1.0 - c_n_dot_v, 5.0);
+		float fd_l = 1.0 + fd90_minus_1 * pow(1.0 - c_n_dot_l, 5.0);
+		DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * (fd_v * fd_l * c_n_dot_l / PI);
+
+		float alpha = ROUGHNESS * ROUGHNESS;
+		float a = c_n_dot_h * alpha;
+		float k = alpha / (1.0 - c_n_dot_h * c_n_dot_h + a * a);
+		float d = k * k / PI;
+		float g = 0.5 / mix(2.0 * c_n_dot_l * c_n_dot_v, c_n_dot_l + c_n_dot_v, alpha);
+		// Same dielectric reflectance as the SPECULAR = 0.25 set in fragment().
+		vec3 f0 = vec3(0.16 * 0.25 * 0.25);
+		float f90 = clamp(dot(f0, vec3(50.0 * 0.33)), 0.0, 1.0);
+		vec3 fresnel_term = f0 + (f90 - f0) * pow(1.0 - c_l_dot_h, 5.0);
+		// The result is converted back to half precision; keep it far below its 65504 limit.
+		SPECULAR_LIGHT += min(c_n_dot_l * d * g * fresnel_term * LIGHT_COLOR * ATTENUATION * SPECULAR_AMOUNT, vec3(2000.0));
+	}
+}
