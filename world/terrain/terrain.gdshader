@@ -23,6 +23,8 @@ uniform float sand_tile_size = 2.4;
 uniform float rock_tile_size = 3.0;
 uniform vec3 sand_tint = vec3(1.22, 1.22, 1.12);
 uniform vec3 rock_tint = vec3(0.8, 0.82, 0.86);
+// Baked sun occlusion darkens the surface only while the sun is up (1 = day, 0 = night).
+uniform float sun_shadow_strength = 1.0;
 uniform float sand_normal_strength = 0.8;
 uniform float rock_normal_strength = 1.0;
 uniform vec3 emitted : source_color = vec3(0.0);
@@ -119,7 +121,7 @@ void fragment() {
   rock_n = normalize(tx.zyx * blend.x + ty.xzy * blend.y + tz.xyz * blend.z);
  }
  float ripples = sin(world_position.x * 7.0 + sin(world_position.z * 0.9) * 1.2);
- ALBEDO = mix(rock, sand, sand_amount) * (0.97 + 0.03 * ripples * sand_amount) * mix(0.25, 1.0, sunlight);
+ ALBEDO = mix(rock, sand, sand_amount) * (0.97 + 0.03 * ripples * sand_amount) * mix(1.0, mix(0.25, 1.0, sunlight), sun_shadow_strength);
  vec3 shaded_normal = normalize(mix(rock_n, sand_n, sand_amount));
  NORMAL = normalize((VIEW_MATRIX * vec4(shaded_normal, 0.0)).xyz);
  ROUGHNESS = mix(0.82, 0.94, sand_amount);

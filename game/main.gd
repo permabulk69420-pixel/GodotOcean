@@ -39,7 +39,7 @@ func _ready() -> void:
 	underwater_environment.ambient_light_color = Color(0.06, 0.32, 0.40)
 	underwater_environment.ambient_light_energy = 0.38
 	day_night.evaluate()
-	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, 1.0)
+	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, terrain.material, 1.0)
 	xr = XRServer.primary_interface
 	if not xr or not xr.is_initialized(): xr = XRServer.find_interface("OpenXR")
 	if xr and (xr.is_initialized() or (OS.has_feature("android") and xr.initialize())):
@@ -80,7 +80,7 @@ func _on_stopping() -> void:
 
 func _process(delta: float) -> void:
 	day_night.advance(delta)
-	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, delta)
+	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, terrain.material, delta)
 	if not cache_bound and ocean.wave_cache.ready:
 		ocean.material.set_shader_parameter("cached_displacement",ocean.wave_cache.displacement)
 		ocean.material.set_shader_parameter("cached_normals",ocean.wave_cache.normals)
