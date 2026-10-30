@@ -1,0 +1,151 @@
+class_name AbyssWatch
+extends Node3D
+## The watch on the left wrist (watch.glb). Its glass shows the frame rate; tapping the glass with the right index finger
+## opens the menu panel (AbyssWatchMenu), and tapping it again closes it. On a flat screen M does the same.
+## It finds the player's hands by path, so it must come after Player in the scene.
+
+const MODEL := preload('res://player/watch/watch.glb')
+const PIXELS := 256
+const REFRESH := 0.5  # seconds between redraws of the glass and the menu: each redraw is a render pass, so not every frame
+const BACKGROUND := Color(0.02, 0.04, 0.05)
+const CAPTION_COLOUR := Color('6fb7ad')
+const DIM_COLOUR := Color('7f9298')
+# A tap: the fingertip is over the glass and has come down to it. It cannot tap again until it has been lifted clear.
+const POKE_RADIUS := 0.03   # metres from the middle of the glass, across it
+const POKE_DEPTH := 0.012   # metres above the glass or nearer
+const POKE_FLOOR := -0.02   # (and not through the wrist)
+const POKE_CLEAR := 0.04    # metres above the glass that re-arms it
+const POKE_AWAY := 0.06     # or this far across
+const OPEN_HAND := 0.3      # a hand squeezing or pulling a trigger is not tapping anything
+const DEFAULT_RATE := 72.0
+
+var diagnostics := AbyssDiagnostics.new()
+var menu: AbyssWatchMenu
+var origin: XROrigin3D
+var head: Node3D
+var left: AbyssVRHand
+var right: AbyssVRHand
+var face: Node3D  # the middle of the glass, +Y out of it
+var glass: SubViewport
+var number: Label
+var detail: Label
+var index_bones: Array[int] = []
+var armed := true
+var key_was := false
+var since_refresh := 0.0
+
+func _ready() -> void:
+	var player := get_node('../Player')
+	origin = player.get_node('XROrigin3D')
+	head = origin.get_node('Head')
+	left = origin.get_node('LeftHand/Hand')
+	right = origin.get_node('RightHand/Hand')
+	for number_in_finger in [2, 3]:
+		index_bones.append(right.skeleton.find_bone('b_r_index%d' % number_in_finger))
+
+	var watch: Node3D = MODEL.instantiate()
+	watch.name = 'Watch'
+	left.model.add_child(watch)
+	face = watch.find_child('watch_face', true, false)
+	_build_glass(watch)
+
+	menu = AbyssWatchMenu.new()
+	menu.name = 'WatchMenu'
+	origin.add_child(menu)  # moves with the player, so it stays where it was hung while swimming
+
+func _build_glass(watch: Node3D) -> void:
+	glass = SubViewport.new()
+	glass.size = Vector2i(PIXELS, PIXELS)
+	glass.disable_3d = true
+	glass.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(glass)
+	var backdrop := ColorRect.new()
+	backdrop.color = BACKGROUND
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	glass.add_child(backdrop)
+	var column := VBoxContainer.new()
+	column.set_anchors_preset(Control.PRESET_FULL_RECT)
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.add_theme_constant_override('separation', 6)
+	glass.add_child(column)
+	column.add_child(_label('FPS', 34, CAPTION_COLOUR))
+	number = _label('--', 110, Color.WHITE)
+	column.add_child(number)
+	detail = _label('', 44, DIM_COLOUR)
+	column.add_child(detail)
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.disable_fog = true
+	material.albedo_texture = glass.get_texture()
+	(watch.find_child('Watch_Screen', true, false) as MeshInstance3D).material_override = material
+
+static func _label(text: String, size: int, colour: Color) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override('font_size', size)
+	label.add_theme_color_override('font_color', colour)
+	return label
+
+# Is a fingertip (in the glass's own frame: +Y out of it) on the glass?
+static func poke_hit(local: Vector3) -> bool:
+	return Vector2(local.x, local.z).length() < POKE_RADIUS and local.y < POKE_DEPTH and local.y > POKE_FLOOR
+
+# Is it well clear of the glass again?
+static func poke_clear(local: Vector3) -> bool:
+	return local.y > POKE_CLEAR or Vector2(local.x, local.z).length() > POKE_AWAY
+
+# `tip`: a fingertip in the world. True on the frame it taps the glass.
+func tapped_by(tip: Vector3) -> bool:
+	var local := face.global_transform.affine_inverse() * tip
+	if armed and poke_hit(local):
+		armed = false
+		return true
+	if not armed and poke_clear(local):
+		armed = true
+	return false
+
+# The right index fingertip: a little way on from the last joint, along the last bone.
+func index_tip() -> Vector3:
+	var skeleton := right.skeleton
+	var before := (skeleton.global_transform * skeleton.get_bone_global_pose(index_bones[0])).origin
+	var last := (skeleton.global_transform * skeleton.get_bone_global_pose(index_bones[1])).origin
+	return last + (last - before) * 0.9
+
+func target_rate() -> float:
+	var xr := XRServer.primary_interface
+	var rate = xr.get('display_refresh_rate') if xr != null else null
+	return float(rate) if rate != null and float(rate) > 0.0 else DEFAULT_RATE
+
+func toggle_menu() -> void:
+	if menu.is_open:
+		menu.close()
+	else:
+		menu.open(head.global_transform)
+		refresh()
+	# GPU and CPU render times are only measured while the panel is up.
+	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), menu.is_open)
+
+func refresh() -> void:
+	since_refresh = 0.0
+	diagnostics.close_interval()
+	var target := target_rate()
+	number.text = '%.0f' % diagnostics.fps
+	number.add_theme_color_override('font_color', AbyssDiagnostics.rate_colour(diagnostics.fps, target))
+	detail.text = '%.1f ms' % diagnostics.average_ms
+	glass.render_target_update_mode = SubViewport.UPDATE_ONCE
+	if menu.is_open:
+		menu.show_values(diagnostics.values(get_viewport(), get_parent(), target))
+
+func _process(delta: float) -> void:
+	diagnostics.frame(delta)
+	since_refresh += delta
+	if since_refresh >= REFRESH: refresh()
+	var asked := false
+	var key := Input.is_key_pressed(KEY_M)
+	asked = key and not key_was
+	key_was = key
+	if left.visible and right.visible and tapped_by(index_tip()):
+		var free_hand := right.controller.get_float(&'grip') < OPEN_HAND and right.controller.get_float(&'trigger') < OPEN_HAND and not right.holding
+		asked = asked or free_hand or menu.is_open
+	if asked: toggle_menu()

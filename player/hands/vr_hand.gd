@@ -10,6 +10,7 @@ const GRIP_FIT = preload('res://player/hands/hand_grip_data.gd')
 
 @export var left_hand := true
 var controller: XRController3D
+var model: Node3D
 var skeleton: Skeleton3D
 var animator: AnimationPlayer
 var grip_bone := -1
@@ -21,7 +22,7 @@ var last_amount := -1.0
 func _ready() -> void:
 	controller = get_parent() as XRController3D
 	rotation.z = PI * 0.5 if left_hand else -PI * 0.5
-	var model: Node3D = (LEFT if left_hand else RIGHT).instantiate()
+	model = (LEFT if left_hand else RIGHT).instantiate()
 	add_child(model)
 	skeleton = model.find_children('*', 'Skeleton3D', true, false)[0]
 	animator = model.find_children('*', 'AnimationPlayer', true, false)[0]
