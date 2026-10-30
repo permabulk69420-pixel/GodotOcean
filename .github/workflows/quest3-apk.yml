@@ -6,6 +6,11 @@ on:
       - codex/abyss-ocean
       - 'ccr-*'
   workflow_dispatch:
+    inputs:
+      full_tests:
+        description: 'Also run the slow stereo VR tests (software rendered, several minutes)'
+        type: boolean
+        default: false
 
 concurrency:
   group: abyss-ocean-apk
@@ -20,6 +25,7 @@ jobs:
     timeout-minutes: 30
     env:
       GODOT_VERSION: '4.6.3'
+      FULL_TESTS: ${{ inputs.full_tests }}
     steps:
       - uses: actions/checkout@v4
 
@@ -111,9 +117,15 @@ jobs:
           fi
           grep -q 'Hand/tool penetration detected' "$RUNNER_TEMP/unsafe-hand-geometry.log"
           echo 'Hand geometry negative control correctly rejected.'
+          if [ "$FULL_TESTS" = "true" ]; then
           OCEAN_TEST_EYE_SIZE=320 OCEAN_STEREO=1 OCEAN_CAPTURE_DIR="$RUNNER_TEMP/ocean-runtime" timeout 600 xvfb-run -a godot --path . --audio-driver Dummy --rendering-method mobile --gpu-validation --fixed-fps 60 --resolution 1280x960 --script res://.github/tests/abyss_ocean.gd > "$RUNNER_TEMP/ocean-runtime.log" 2>&1 || { cat "$RUNNER_TEMP/ocean-runtime.log"; exit 1; }
           cat "$RUNNER_TEMP/ocean-runtime.log"
           if grep -E 'SCRIPT ERROR|ERROR:|Validation Error|VUID-|SYNC-HAZARD' "$RUNNER_TEMP/ocean-runtime.log"; then exit 1; fi
+          fi
+          # Quick render check (about a minute): catches shader errors without the slow stereo tests.
+          timeout 300 xvfb-run -a godot --path . --audio-driver Dummy --rendering-method mobile --fixed-fps 60 --resolution 640x480 --script res://.github/tests/smoke.gd > "$RUNNER_TEMP/smoke.log" 2>&1 || { cat "$RUNNER_TEMP/smoke.log"; exit 1; }
+          cat "$RUNNER_TEMP/smoke.log"
+          if grep -E 'SCRIPT ERROR|SHADER ERROR|ERROR:' "$RUNNER_TEMP/smoke.log"; then exit 1; fi
           godot --headless --path . --export-debug 'Meta Quest' artifacts/AbyssOcean-Quest3.apk
           python3 - <<'PYAPK'
           from pathlib import Path
@@ -134,11 +146,13 @@ jobs:
           if grep -E 'SCRIPT ERROR|ERROR:' "$RUNNER_TEMP/exported-package.log"; then exit 1; fi
           HAND_FIT_OUTPUT="$RUNNER_TEMP/exported-hand-geometry.json" godot --headless --path "$RUNNER_TEMP/exported-runtime" --script "$GITHUB_WORKSPACE/.github/tests/hand_geometry.gd"
           blender --background --threads 2 --python-exit-code 1 --python tools/check_hand_fit.py -- "$RUNNER_TEMP/exported-hand-geometry.json"
+          if [ "$FULL_TESTS" = "true" ]; then
           mkdir -p "$RUNNER_TEMP/exported-runtime/.github/tests"
           cp .github/tests/quest_xr_interface.gd "$RUNNER_TEMP/exported-runtime/.github/tests/"
           OCEAN_TEST_EYE_SIZE=320 OCEAN_STEREO=1 OCEAN_CAPTURE_DIR="$RUNNER_TEMP/exported-views" timeout 600 xvfb-run -a godot --path "$RUNNER_TEMP/exported-runtime" --audio-driver Dummy --rendering-method mobile --gpu-validation --fixed-fps 60 --resolution 1280x960 --script "$GITHUB_WORKSPACE/.github/tests/abyss_ocean.gd" > "$RUNNER_TEMP/exported-stereo.log" 2>&1 || { cat "$RUNNER_TEMP/exported-stereo.log"; exit 1; }
           cat "$RUNNER_TEMP/exported-stereo.log"
           if grep -E 'SCRIPT ERROR|ERROR:|Validation Error|VUID-|SYNC-HAZARD' "$RUNNER_TEMP/exported-stereo.log"; then exit 1; fi
+          fi
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs artifacts/AbyssOcean-Quest3.apk | tee "$RUNNER_TEMP/signing.txt"
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree artifacts/AbyssOcean-Quest3.apk AndroidManifest.xml > "$RUNNER_TEMP/manifest.txt"
           python3 - <<'PY'
