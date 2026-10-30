@@ -86,6 +86,9 @@ jobs:
           EOF
           printf 'res://addons/imgui-godot/imgui-godot-native.gdextension\nres://addons/godotopenxrvendors/meta/plugin.gdextension\n' > .godot/extension_list.cfg
           printf '\norg.gradle.workers.max=4\norg.gradle.daemon=false\n' >> android/build/gradle.properties
+          # Android only updates an installed app when the version code rises, so tie it to the run number.
+          sed -i -E "s/^version\/code=.*/version\/code=${{ github.run_number }}/" export_presets.cfg
+          grep -n '^version/code=' export_presets.cfg
 
       - name: Import and build Quest 3 APK
         run: |
