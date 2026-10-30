@@ -3,9 +3,11 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dgbqd7dvtf0e4"
-path="res://.godot/imported/reef_kit_ReefAtlas_normal.png-658c6ae36f3b5fc971486e36c6a7035a.ctex"
+path.s3tc="res://.godot/imported/reef_kit_ReefAtlas_normal.png-658c6ae36f3b5fc971486e36c6a7035a.s3tc.ctex"
+path.etc2="res://.godot/imported/reef_kit_ReefAtlas_normal.png-658c6ae36f3b5fc971486e36c6a7035a.etc2.ctex"
 metadata={
-"vram_texture": false
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
+"vram_texture": true
 }
 generator_parameters={
 "md5": "c8f0fec0827b6e4c6ca7c75008c84756"
@@ -14,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://world/reef/reef_kit_ReefAtlas_normal.png"
-dest_files=["res://.godot/imported/reef_kit_ReefAtlas_normal.png-658c6ae36f3b5fc971486e36c6a7035a.ctex"]
+dest_files=["res://.godot/imported/reef_kit_ReefAtlas_normal.png-658c6ae36f3b5fc971486e36c6a7035a.s3tc.ctex", "res://.godot/imported/reef_kit_ReefAtlas_normal.png-658c6ae36f3b5fc971486e36c6a7035a.etc2.ctex"]
 
 [params]
 

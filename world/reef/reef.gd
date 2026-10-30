@@ -42,6 +42,9 @@ var set_pieces := [
 ]
 
 @export var enabled := true
+## Build simpler versions (levels of detail) of every merged patch, which Godot swaps in with
+## distance, so faraway reef costs far fewer triangles than the full-detail pieces up close.
+@export var generate_lods := true
 @export var keep_clear_of_mushroom := 28.0
 @export var keep_clear_of_entrances := 8.0
 
@@ -224,6 +227,11 @@ func merge(pieces: Array, is_rock: bool) -> ArrayMesh:
 		arrays[Mesh.ARRAY_TEX_UV] = uvs
 		arrays[Mesh.ARRAY_TANGENT] = tangents
 	arrays[Mesh.ARRAY_INDEX] = indices
+	if generate_lods:
+		var importer := ImporterMesh.new()
+		importer.add_surface(Mesh.PRIMITIVE_TRIANGLES, arrays)
+		importer.generate_lods(60.0, 25.0, [])
+		return importer.get_mesh()
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
 	return mesh
