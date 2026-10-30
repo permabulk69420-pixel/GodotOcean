@@ -15,6 +15,7 @@ signal submerged_changed(submerged: bool)
 @onready var day_night: AbyssDayNight = $DayNight
 @onready var plankton: AbyssPlankton = $Plankton
 @onready var mushroom: AbyssMushroom = $Mushroom
+@onready var ambience: AbyssAmbience = $Ambience
 
 var cache_bound := false
 var xr: XRInterface
@@ -90,6 +91,7 @@ func _process(delta: float) -> void:
 		boosts.append(player.thrusters.throttles[i] * 1.5)
 	plankton.update(delta, camera.global_position, sources, boosts, day_night.daylight, submerged)
 	mushroom.set_daylight(day_night.daylight)
+	ambience.update(delta, submerged, player.head_depth, player.thrusters.motors, player.thrusters.throttles)
 	if not cache_bound and ocean.wave_cache.ready:
 		ocean.material.set_shader_parameter("cached_displacement",ocean.wave_cache.displacement)
 		ocean.material.set_shader_parameter("cached_normals",ocean.wave_cache.normals)

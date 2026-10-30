@@ -11,6 +11,8 @@
 [ext_resource type="Script" path="res://world/day_night.gd" id="9"]
 [ext_resource type="Script" path="res://world/plankton/plankton.gd" id="10"]
 [ext_resource type="Script" path="res://world/landmark/mushroom.gd" id="11"]
+[ext_resource type="Script" path="res://world/vegetation/seagrass.gd" id="12"]
+[ext_resource type="Script" path="res://world/audio/ambience.gd" id="13"]
 
 [sub_resource type="CapsuleShape3D" id="SwimmerShape"]
 radius = 0.28
@@ -114,3 +116,9 @@ script = ExtResource("10")
 
 [node name="Mushroom" type="Node3D" parent="."]
 script = ExtResource("11")
+
+[node name="Seagrass" type="Node3D" parent="."]
+script = ExtResource("12")
+
+[node name="Ambience" type="Node3D" parent="."]
+script = ExtResource("13")
