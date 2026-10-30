@@ -3,6 +3,7 @@ shader_type spatial;
 // rebinds the per-pass descriptors when switching from the ocean shader while
 // Godot asynchronously specializes pipelines. Coverage remains fully opaque.
 render_mode world_vertex_coords, depth_draw_always;
+#include "res://world/ocean/shaders/underwater_light.gdshaderinc"
 uniform sampler2D grain : repeat_enable, filter_linear_mipmap_anisotropic;
 // Equipment shares this draw layout so Mobile never switches incompatible
 // specialized shader layouts between terrain, skinned palms and held tools.
@@ -19,13 +20,15 @@ uniform sampler2D sand_colour : source_color, repeat_enable, filter_linear_mipma
 uniform sampler2D sand_normal : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D rock_colour : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D rock_normal : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
-uniform float sand_tile_size = 2.4;
+// Sand is Poly Haven's rippled beach (aerial_beach_01, a 30 m scan) shrunk so the ripples are a
+// hand's width apart, like the small ripples waves leave on a sandy seabed. Rock is rock_boulder_dry.
+uniform float sand_tile_size = 5.5;
 uniform float rock_tile_size = 3.0;
-uniform vec3 sand_tint = vec3(1.22, 1.22, 1.12);
-uniform vec3 rock_tint = vec3(0.8, 0.82, 0.86);
+uniform vec3 sand_tint = vec3(1.55, 1.5, 1.38);
+uniform vec3 rock_tint = vec3(0.92, 0.95, 0.9);
 // Baked sun occlusion darkens the surface only while the sun is up (1 = day, 0 = night).
 uniform float sun_shadow_strength = 1.0;
-uniform float sand_normal_strength = 0.8;
+uniform float sand_normal_strength = 1.0;
 uniform float rock_normal_strength = 1.0;
 uniform vec3 emitted : source_color = vec3(0.0);
 
@@ -37,6 +40,10 @@ vec3 unpack_normal(vec4 texel, float strength) {
 varying vec3 world_position;
 varying vec3 world_normal;
 varying float sunlight;
+// Caustic brightness for the sun, worked out once per pixel in fragment() and used in light().
+varying float caustic;
+// The material's SPECULAR value, which light() cannot read directly.
+varying float specular_level;
 void vertex() {
  world_position=VERTEX;
  world_normal=NORMAL;
@@ -46,6 +53,7 @@ void fragment() {
  AO = 1.0;
  AO_LIGHT_AFFECT = 0.0;
  SPECULAR = 0.5;
+ caustic = caustic_light(world_position, TIME);
  if (surface_kind > 0) {
   // Procedural housings have no texture UVs. Only the imported skin samples
   // UV textures; sampling a missing UV channel produces undefined derivatives.
@@ -128,6 +136,40 @@ void fragment() {
  SPECULAR = 0.16;
  AO = COLOR.b;
  AO_LIGHT_AFFECT = 0.0;
+ // No caustics where the baked sun visibility says the seabed is in shade.
+ caustic = mix(1.0, caustic, sunlight);
  }
+ specular_level = SPECULAR;
  ALPHA=1.0;
+}
+
+// Full-precision lighting (the headset runs Godot's built-in version in half precision; see the
+// water shader). Same Burley diffuse + GGX specular as the default, with the sun's direct light
+// shaped by the caustics.
+void light() {
+ float n_dot_l = dot(NORMAL, LIGHT);
+ vec3 half_sum = LIGHT + VIEW;
+ float half_length = length(half_sum);
+ if (n_dot_l > 0.0 && half_length > 0.001) {
+  float shaped = LIGHT_IS_DIRECTIONAL ? caustic : 1.0;
+  vec3 half_vector = half_sum / half_length;
+  float c_n_dot_l = min(n_dot_l, 1.0);
+  float c_n_dot_v = clamp(dot(NORMAL, VIEW), 0.0001, 1.0);
+  float c_n_dot_h = clamp(dot(NORMAL, half_vector), 0.0, 1.0);
+  float c_l_dot_h = clamp(dot(LIGHT, half_vector), 0.0, 1.0);
+  float fd90_minus_1 = 2.0 * c_l_dot_h * c_l_dot_h * ROUGHNESS - 0.5;
+  float fd_v = 1.0 + fd90_minus_1 * pow(1.0 - c_n_dot_v, 5.0);
+  float fd_l = 1.0 + fd90_minus_1 * pow(1.0 - c_n_dot_l, 5.0);
+  DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * (fd_v * fd_l * c_n_dot_l / PI) * shaped;
+  float alpha = max(ROUGHNESS * ROUGHNESS, 0.002);
+  float a = c_n_dot_h * alpha;
+  float k = alpha / (1.0 - c_n_dot_h * c_n_dot_h + a * a);
+  float d = k * k / PI;
+  float g = 0.5 / mix(2.0 * c_n_dot_l * c_n_dot_v, c_n_dot_l + c_n_dot_v, alpha);
+  // Metal parts of the held equipment tint their reflection, as in Godot's default lighting.
+  vec3 f0 = mix(vec3(0.16 * specular_level * specular_level), ALBEDO, METALLIC);
+  float f90 = clamp(dot(f0, vec3(50.0 * 0.33)), 0.0, 1.0);
+  vec3 fresnel_term = f0 + (f90 - f0) * pow(1.0 - c_l_dot_h, 5.0);
+  SPECULAR_LIGHT += min(c_n_dot_l * d * g * fresnel_term * LIGHT_COLOR * ATTENUATION * SPECULAR_AMOUNT * shaped, vec3(2000.0));
+ }
 }

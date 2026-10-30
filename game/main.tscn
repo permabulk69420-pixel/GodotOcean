@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://game/main.gd" id="1"]
 [ext_resource type="Script" path="res://world/ocean/ocean.gd" id="2"]
@@ -14,6 +14,7 @@
 [ext_resource type="Script" path="res://world/vegetation/seagrass.gd" id="12"]
 [ext_resource type="Script" path="res://world/audio/ambience.gd" id="13"]
 [ext_resource type="Script" path="res://world/reef/reef.gd" id="14"]
+[ext_resource type="Script" path="res://world/ocean/light_shafts.gd" id="15"]
 
 [sub_resource type="CapsuleShape3D" id="SwimmerShape"]
 radius = 0.28
@@ -127,3 +128,6 @@ script = ExtResource("13")
 
 [node name="Reef" type="Node3D" parent="."]
 script = ExtResource("14")
+
+[node name="LightShafts" type="MultiMeshInstance3D" parent="."]
+script = ExtResource("15")

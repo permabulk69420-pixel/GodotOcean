@@ -84,6 +84,22 @@ num_cascades={
 "type": "uint",
 "value": 0
 }
+caustic_frames={
+"type": "sampler2DArray",
+"value": "res://world/ocean/caustics.png"
+}
+underwater_sun_direction={
+"type": "vec3",
+"value": Vector3(0, 1, 0)
+}
+underwater_caustics={
+"type": "float",
+"value": 0.0
+}
+water_surface_height={
+"type": "float",
+"value": 8.0
+}
 
 [xr]
 
