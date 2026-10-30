@@ -47,14 +47,15 @@ vec3 refracted_sky(vec3 direction) {
  vec3 extinction=exp(-(beta_r*8400.0*mass+beta_m*1250.0*mass));
  float cosine=dot(direction,sky_sun_direction);
  float phase_r=(3.0/(16.0*PI))*(1.0*pow(cosine*0.5+0.5,2.0)+1.0);
- float phase_m=0.0795774715459*(1.0-0.8*0.8)/pow(1.0+0.8*0.8-2.0*0.8*cosine,1.5);
+ float phase_m=0.0795774715459*(1.0-0.8*0.8)/pow(max(1.0+0.8*0.8-2.0*0.8*cosine,0.02),1.5);
  vec3 incident=energy*(beta_r*phase_r+beta_m*phase_m)/(beta_r+beta_m);
  vec3 scattering=pow(incident*(1.0-extinction),vec3(1.5));
  scattering*=mix(vec3(1.0),pow(incident*extinction,vec3(0.5)),clamp(pow(1.0-sun_zenith,5.0),0.0,1.0));
  scattering*=mix(sky_ground_color,vec3(1.0),smoothstep(-0.1,0.1,direction.y));
- // Compare ray directions directly to avoid near-identical cosine thresholds.
- float separation=length(direction-sky_sun_direction);
- float disk=1.0-smoothstep(0.00436332,0.00872662,separation);
- vec3 color=scattering+energy*extinction*disk*sky_sun_color;
- return pow(max(color,vec3(0.0)),vec3(1.0/(1.2+1.2*fade)));
+ // No separate sun disk: the Mie glow from phase_m already marks the sun, and the disk's
+ // tiny thresholds were the suspected cause of a black square on the headset. NaN/Inf
+ // are zeroed so a bad sample can never blank pixels.
+ vec3 color=scattering;
+ if (any(isnan(color)) || any(isinf(color))) color=vec3(0.0);
+ return pow(clamp(color,vec3(0.0),vec3(64.0)),vec3(1.0/(1.2+1.2*fade)));
 }

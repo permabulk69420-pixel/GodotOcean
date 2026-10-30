@@ -42,6 +42,14 @@ void fragment() {
 	vec2 fine=texture(detail_normals,q).rg*2.0-1.0;
 	vec3 world_normal=normalize(ocean_normal+vec3(gradient.x+fine.x*0.2727,0.0,gradient.y+fine.y*0.2727));
 	vec3 eye_direction = normalize(CAMERA_POSITION_WORLD - ocean_position);
+	if (FRONT_FACING) {
+		// Detail normals can tilt the mirror direction under the horizon, where the sky
+		// radiance is the near-black ground colour. Lift such reflections back above it.
+		vec3 mirror = reflect(-eye_direction, world_normal);
+		float below = smoothstep(0.12, -0.04, mirror.y);
+		vec3 lifted = normalize(eye_direction + vec3(mirror.x, max(mirror.y, 0.0) + 0.03, mirror.z));
+		world_normal = normalize(mix(world_normal, lifted, below));
+	}
 	vec3 view_normal = normalize((VIEW_MATRIX * vec4(world_normal, 0.0)).xyz);
 	float thickness = 200.0;
 	vec3 transmission = exp(-absorption * min(thickness, 200.0));
@@ -55,7 +63,7 @@ void fragment() {
 		world_normal = -world_normal;
 		float internal = 1.0 - smoothstep(0.61, 0.69, dot(world_normal, eye_direction));
 		vec3 ray=refract(-eye_direction,world_normal,1.333);
-		vec3 sky=length(ray)>0.0 ? refracted_sky(normalize(ray)) : shallow_color*0.35;
+		vec3 sky=length(ray)>0.001 ? refracted_sky(normalize(ray)) : shallow_color*0.35;
 		transmitted = mix(sky, shallow_color * 0.35, internal);
 		fresnel = 0.0;
 		foam *= 0.25;
