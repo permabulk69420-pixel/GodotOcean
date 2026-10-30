@@ -1,5 +1,9 @@
 class_name AbyssTerrain
 extends Node3D
+const SAND_COLOUR=preload('res://world/terrain/textures/sand_colour.jpg')
+const SAND_NORMAL=preload('res://world/terrain/textures/sand_normal.jpg')
+const ROCK_COLOUR=preload('res://world/terrain/textures/rock_colour.jpg')
+const ROCK_NORMAL=preload('res://world/terrain/textures/rock_normal.jpg')
 @export var settings: AbyssTerrainSettings
 var observer: Node3D
 var chunks: Dictionary={}
@@ -27,6 +31,10 @@ func _ready() -> void:
 	texture.width=512;texture.height=512
 	texture.seamless=true;texture.generate_mipmaps=true;texture.noise=noise
 	material.set_shader_parameter('grain',texture)
+	material.set_shader_parameter('sand_colour',SAND_COLOUR)
+	material.set_shader_parameter('sand_normal',SAND_NORMAL)
+	material.set_shader_parameter('rock_colour',ROCK_COLOUR)
+	material.set_shader_parameter('rock_normal',ROCK_NORMAL)
 	if ResourceLoader.exists('res://world/terrain/baked/index.tres'):
 		var index: AbyssTerrainBakeIndex=load('res://world/terrain/baked/index.tres')
 		if index.signature==settings.signature() and not index.coordinates.is_empty():
