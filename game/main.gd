@@ -27,6 +27,7 @@ var xr: XRInterface
 var xr_focused := false
 var submerged := false
 var seabed_shown := true
+var seabed_test_hidden := false
 var depth := 0.0
 var surface_environment: Environment
 var underwater_environment: Environment
@@ -143,12 +144,21 @@ func update_water_state() -> void:
 	elif depth < -0.3: show_seabed = false
 	if show_seabed != seabed_shown:
 		seabed_shown = show_seabed
-		terrain.visible = show_seabed
-		reef.visible = show_seabed
-		seagrass.visible = show_seabed
+		apply_seabed_visibility()
 	# The colour absorption in day_night.gd already dims the light with depth; this is the rest.
 	var energy := day_night.light_energy() * (exp(-maxf(depth, 0.0) * 0.02) if submerged else 1.0)
 	if not is_equal_approx(sun.light_energy,energy): sun.light_energy=energy
+
+## The watch's performance test can hide the seabed outright, whatever the water state says.
+func set_seabed_test_hidden(hidden: bool) -> void:
+	seabed_test_hidden = hidden
+	apply_seabed_visibility()
+
+func apply_seabed_visibility() -> void:
+	var show := seabed_shown and not seabed_test_hidden
+	terrain.visible = show
+	reef.visible = show
+	seagrass.visible = show
 
 func release_depth() -> void:
 	if is_instance_valid(ocean) and ocean.wave_cache: ocean.wave_cache.release()

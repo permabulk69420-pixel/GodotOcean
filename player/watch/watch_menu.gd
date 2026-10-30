@@ -63,15 +63,15 @@ func _build_page() -> Control:
 	columns.add_theme_constant_override('separation', 56)
 	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	layout.add_child(columns)
-	# Two columns: the first two sections on the left, the rest on the right.
+	# Each section says which of the two columns it goes in.
 	var sections := AbyssDiagnostics.SECTIONS
 	for column_index in range(2):
 		var column := VBoxContainer.new()
 		column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		column.add_theme_constant_override('separation', 3)
 		columns.add_child(column)
-		for section_index in range(column_index * 2, column_index * 2 + 2):
-			var section: Array = sections[section_index]
+		for section: Array in sections:
+			if section[2] != column_index: continue
 			var heading := _label(String(section[0]).to_upper(), 22, TEXT_DIM)
 			heading.add_theme_constant_override('line_spacing', 0)
 			column.add_child(heading)

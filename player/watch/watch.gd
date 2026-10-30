@@ -18,6 +18,7 @@ const POKE_CLEAR := 0.04    # metres above the glass that re-arms it
 const POKE_AWAY := 0.06     # or this far across
 const OPEN_HAND := 0.3      # a hand squeezing or pulling a trigger is not tapping anything
 const DEFAULT_RATE := 72.0
+const SCALES := [1.0, 0.9, 0.8, 0.7]  # render scales the A button steps through
 
 var diagnostics := AbyssDiagnostics.new()
 var menu: AbyssWatchMenu
@@ -32,6 +33,8 @@ var detail: Label
 var index_bones: Array[int] = []
 var armed := true
 var key_was := false
+var scale_step := 0
+var test_was := [false, false, false, false]
 var since_refresh := 0.0
 
 func _ready() -> void:
@@ -120,11 +123,35 @@ func target_rate() -> float:
 func toggle_menu() -> void:
 	if menu.is_open:
 		menu.close()
+		# The water and seabed tests are only for reading the numbers; put them back when the panel goes away.
+		if get_parent().get('ocean') != null:
+			get_parent().ocean.surface.visible = true
+			get_parent().set_seabed_test_hidden(false)
 	else:
 		menu.open(head.global_transform)
 		refresh()
 	# GPU and CPU render times are only measured while the panel is up.
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), menu.is_open)
+
+## The performance tests, run from the panel while it is open: 0 render scale (A), 1 anti-aliasing (B), 2 water
+## surface (X), 3 seabed (Y). Render scale and anti-aliasing stay as set; the other two undo themselves on close.
+func press_test(index: int) -> void:
+	var game := get_parent()
+	var viewport := get_viewport()
+	match index:
+		0:
+			scale_step = (scale_step + 1) % SCALES.size()
+			viewport.scaling_3d_scale = SCALES[scale_step]
+		1:
+			viewport.msaa_3d = ((viewport.msaa_3d + 1) % 3) as Viewport.MSAA
+		2:
+			if game.get('ocean') != null: game.ocean.surface.visible = not game.ocean.surface.visible
+		3:
+			if game.get('ocean') != null: game.set_seabed_test_hidden(not game.seabed_test_hidden)
+	show_panel_values()
+
+func show_panel_values() -> void:
+	menu.show_values(diagnostics.values(get_viewport(), get_parent(), target_rate()))
 
 func refresh() -> void:
 	since_refresh = 0.0
@@ -134,8 +161,7 @@ func refresh() -> void:
 	number.add_theme_color_override('font_color', AbyssDiagnostics.rate_colour(diagnostics.fps, target))
 	detail.text = '%.1f ms' % diagnostics.average_ms
 	glass.render_target_update_mode = SubViewport.UPDATE_ONCE
-	if menu.is_open:
-		menu.show_values(diagnostics.values(get_viewport(), get_parent(), target))
+	if menu.is_open: show_panel_values()
 
 func _process(delta: float) -> void:
 	diagnostics.frame(delta)
@@ -149,3 +175,15 @@ func _process(delta: float) -> void:
 		var free_hand := right.controller.get_float(&'grip') < OPEN_HAND and right.controller.get_float(&'trigger') < OPEN_HAND and not right.holding
 		asked = asked or free_hand or menu.is_open
 	if asked: toggle_menu()
+	if menu.is_open: _read_test_buttons()
+
+# A and B on the right controller, X and Y on the left (or 1 to 4 on a keyboard); each press runs one test.
+func _read_test_buttons() -> void:
+	var buttons := [
+		right.controller.is_button_pressed(&'ax_button'), right.controller.is_button_pressed(&'by_button'),
+		left.controller.is_button_pressed(&'ax_button'), left.controller.is_button_pressed(&'by_button'),
+	]
+	for index in range(4):
+		var down: bool = buttons[index] or Input.is_key_pressed(KEY_1 + index)
+		if down and not test_was[index]: press_test(index)
+		test_was[index] = down
