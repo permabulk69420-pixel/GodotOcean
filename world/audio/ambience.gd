@@ -7,16 +7,20 @@ extends Node3D
 const WAVES := preload('res://world/audio/ocean_loop.wav')
 const WIND := preload('res://world/audio/wind_loop.wav')
 const UNDERWATER := preload('res://world/audio/underwater_loop.wav')
+# "Underwater Ambient Pad" by isaiah658 (CC0, opengameart.org): quiet background music below the surface.
+const PAD := preload('res://world/audio/underwater_pad.ogg')
 const THRUSTER := preload('res://world/audio/thruster_loop.wav')
 
 const AMBIENCE_BUS := &'Ambience'
 const THRUSTER_BUS := &'Thrusters'
+const MUSIC_BUS := &'Music'
 const CLEAR_CUTOFF := 18000.0
 const MUFFLED_CUTOFF := 650.0
 
 var waves: AudioStreamPlayer
 var wind: AudioStreamPlayer
 var rumble: AudioStreamPlayer
+var music: AudioStreamPlayer
 var thrusters: Array[AudioStreamPlayer3D] = []
 var ambience_filter: AudioEffectLowPassFilter
 var thruster_filter: AudioEffectLowPassFilter
@@ -29,6 +33,12 @@ func _ready() -> void:
 	waves = make_player(WAVES, AMBIENCE_BUS)
 	wind = make_player(WIND, AMBIENCE_BUS)
 	rumble = make_player(UNDERWATER, AMBIENCE_BUS)
+	# The pad gets its own unfiltered bus so diving does not muffle it.
+	if AudioServer.get_bus_index(MUSIC_BUS) < 0:
+		AudioServer.add_bus()
+		AudioServer.set_bus_name(AudioServer.bus_count - 1, MUSIC_BUS)
+		AudioServer.set_bus_send(AudioServer.bus_count - 1, &'Master')
+	music = make_player(PAD, MUSIC_BUS)
 
 func make_bus(bus_name: StringName) -> AudioEffectLowPassFilter:
 	var index := AudioServer.get_bus_index(bus_name)
@@ -58,7 +68,8 @@ func update(delta: float, submerged: bool, depth: float, motors: Array[Node3D], 
 	var wave_level := lerpf(-9.0, -16.0, blend) - maxf(depth, 0.0) * 0.9
 	waves.volume_db = maxf(wave_level, -80.0)
 	wind.volume_db = lerpf(-80.0, -13.0, above * above)
-	rumble.volume_db = lerpf(-80.0, -15.0, blend * blend)
+	rumble.volume_db = lerpf(-80.0, -22.0, blend * blend)
+	music.volume_db = lerpf(-80.0, -26.0, blend * blend)
 	# Muffle in log-frequency so the sweep sounds even.
 	ambience_filter.cutoff_hz = exp(lerpf(log(CLEAR_CUTOFF), log(MUFFLED_CUTOFF), blend))
 	thruster_filter.cutoff_hz = exp(lerpf(log(CLEAR_CUTOFF), log(2600.0), blend))
