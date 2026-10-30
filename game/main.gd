@@ -18,6 +18,7 @@ const UNDERWATER_SKY_SHADER := preload("res://world/ocean/shaders/underwater_sky
 @onready var plankton: AbyssPlankton = $Plankton
 @onready var mushroom: AbyssMushroom = $Mushroom
 @onready var reef: AbyssReef = $Reef
+@onready var seagrass: Node3D = $Seagrass
 @onready var ambience: AbyssAmbience = $Ambience
 @onready var light_shafts: AbyssLightShafts = $LightShafts
 
@@ -25,6 +26,7 @@ var cache_bound := false
 var xr: XRInterface
 var xr_focused := false
 var submerged := false
+var seabed_shown := true
 var depth := 0.0
 var surface_environment: Environment
 var underwater_environment: Environment
@@ -133,6 +135,17 @@ func update_water_state() -> void:
 		submerged = next
 		world.environment = underwater_environment if submerged else surface_environment
 		submerged_changed.emit(submerged)
+	# The water is opaque and the seabed lies well below it, so from above nothing down there can be
+	# seen. Skip drawing it then. The thresholds differ so the head bobbing at the surface cannot
+	# flicker it, and sit above the submerge point so it is back before the head goes under.
+	var show_seabed := seabed_shown
+	if depth > -0.15: show_seabed = true
+	elif depth < -0.3: show_seabed = false
+	if show_seabed != seabed_shown:
+		seabed_shown = show_seabed
+		terrain.visible = show_seabed
+		reef.visible = show_seabed
+		seagrass.visible = show_seabed
 	# The colour absorption in day_night.gd already dims the light with depth; this is the rest.
 	var energy := day_night.light_energy() * (exp(-maxf(depth, 0.0) * 0.02) if submerged else 1.0)
 	if not is_equal_approx(sun.light_energy,energy): sun.light_energy=energy
