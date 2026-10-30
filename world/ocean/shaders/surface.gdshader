@@ -58,20 +58,22 @@ void fragment() {
 	float whitecap = smoothstep(0.10, 0.42, wave_compression) * smoothstep(0.40, 0.77, n + small * 0.22);
 	float foam = clamp(whitecap, 0.0, 1.0);
 	vec3 scatter = mix(shallow_color, deep_color, 1.0 - exp(-thickness * 0.045));
-	vec3 transmitted = scatter * (1.0 - transmission);
+	// Water colour is emissive, so it needs its own brightness drop at night.
+	float light_level = mix(0.035, 1.0, day_amount);
+	vec3 transmitted = scatter * (1.0 - transmission) * light_level;
 	if (!FRONT_FACING) {
 		world_normal = -world_normal;
 		float internal = 1.0 - smoothstep(0.61, 0.69, dot(world_normal, eye_direction));
 		vec3 ray=refract(-eye_direction,world_normal,1.333);
 		vec3 sky=length(ray)>0.001 ? refracted_sky(normalize(ray)) : shallow_color*0.35;
-		transmitted = mix(sky, shallow_color * 0.35, internal);
+		transmitted = mix(sky, shallow_color * 0.35 * light_level, internal);
 		fresnel = 0.0;
 		foam *= 0.25;
 	}
 	NORMAL = normalize((VIEW_MATRIX * vec4(world_normal, 0.0)).xyz);
 	ALBEDO = mix(scatter * 0.10, foam_color, foam);
 	EMISSION = transmitted * (1.0 - fresnel) * (1.0 - foam);
-	EMISSION += shallow_color * max(crest_height, 0.0) * pow(1.0 - facing, 3.0) * 0.12;
+	EMISSION += shallow_color * max(crest_height, 0.0) * pow(1.0 - facing, 3.0) * 0.12 * light_level;
 	ROUGHNESS = mix(0.055 + (1.0 - facing) * 0.025, 0.65, foam);
 	SPECULAR = 0.25;
 	METALLIC = 0.0;

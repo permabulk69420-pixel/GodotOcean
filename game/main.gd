@@ -11,6 +11,8 @@ signal submerged_changed(submerged: bool)
 @onready var right_controller: XRController3D = $Player/XROrigin3D/RightHand
 @onready var world: WorldEnvironment = $Environment
 @onready var sun: DirectionalLight3D = $Sun
+@onready var sky_sun: DirectionalLight3D = $SkySun
+@onready var day_night: AbyssDayNight = $DayNight
 
 var cache_bound := false
 var xr: XRInterface
@@ -27,7 +29,6 @@ func _ready() -> void:
 	player.ocean = ocean
 	player.terrain = terrain
 	ocean.wave_cache.start()
-	ocean.material.set_shader_parameter("sky_sun_direction",sun.global_basis.z)
 	surface_environment = world.environment
 	underwater_environment = surface_environment.duplicate(true)
 	underwater_environment.sky = surface_environment.sky
@@ -37,6 +38,8 @@ func _ready() -> void:
 	underwater_environment.fog_sky_affect = 1.0
 	underwater_environment.ambient_light_color = Color(0.06, 0.32, 0.40)
 	underwater_environment.ambient_light_energy = 0.38
+	day_night.evaluate()
+	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, 1.0)
 	xr = XRServer.primary_interface
 	if not xr or not xr.is_initialized(): xr = XRServer.find_interface("OpenXR")
 	if xr and (xr.is_initialized() or (OS.has_feature("android") and xr.initialize())):
@@ -76,6 +79,8 @@ func _on_stopping() -> void:
 	get_tree().paused = true
 
 func _process(delta: float) -> void:
+	day_night.advance(delta)
+	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, delta)
 	if not cache_bound and ocean.wave_cache.ready:
 		ocean.material.set_shader_parameter("cached_displacement",ocean.wave_cache.displacement)
 		ocean.material.set_shader_parameter("cached_normals",ocean.wave_cache.normals)
@@ -94,7 +99,7 @@ func update_water_state() -> void:
 		submerged = next
 		world.environment = underwater_environment if submerged else surface_environment
 		submerged_changed.emit(submerged)
-	var energy := 1.6 * exp(-maxf(depth, 0.0) * 0.045) if submerged else 1.6
+	var energy := day_night.light_energy() * (exp(-maxf(depth, 0.0) * 0.045) if submerged else 1.0)
 	if not is_equal_approx(sun.light_energy,energy): sun.light_energy=energy
 
 func release_depth() -> void:

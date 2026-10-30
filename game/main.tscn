@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://player/swimmer.gd" id="6"]
 [ext_resource type="Script" path="res://player/hands/vr_hand.gd" id="7"]
 [ext_resource type="Script" path="res://player/thrusters/hand_thrusters.gd" id="8"]
+[ext_resource type="Script" path="res://world/day_night.gd" id="9"]
 
 [sub_resource type="CapsuleShape3D" id="SwimmerShape"]
 radius = 0.28
@@ -20,8 +21,8 @@ ground_color = Color(0.12, 0.16, 0.18, 1)
 sun_disk_scale = 1.0
 
 [sub_resource type="Sky" id="Sky"]
-process_mode = 1
-radiance_size = 4
+process_mode = 2
+radiance_size = 3
 sky_material = SubResource("Atmosphere")
 
 [sub_resource type="Environment" id="SurfaceEnvironment"]
@@ -102,3 +103,6 @@ rotation_degrees = Vector3(-32, 155, 0)
 light_color = Color(1, 0.95, 0.85, 1)
 light_energy = 1.6
 sky_mode = 2
+
+[node name="DayNight" type="Node" parent="."]
+script = ExtResource("9")

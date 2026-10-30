@@ -34,6 +34,10 @@ uniform vec3 sky_rayleigh_color : source_color=vec3(0.3,0.405,0.6);
 uniform vec3 sky_mie_color : source_color=vec3(0.69,0.729,0.812);
 uniform vec3 sky_ground_color : source_color=vec3(0.12,0.16,0.18);
 uniform vec3 sky_sun_color : source_color=vec3(1.0,0.95,0.85);
+// 1 in daylight, 0 at night. At night the sky seen through the surface is a faint blue
+// instead of the sun-driven scattering below.
+uniform float day_amount=1.0;
+uniform vec3 sky_night_color : source_color=vec3(0.0006,0.0016,0.0045);
 // Same atmospheric scattering as the scene's PhysicalSkyMaterial. Evaluate the
 // refracted ray rather than copying, resolving and resampling both eye images.
 vec3 refracted_sky(vec3 direction) {
@@ -55,7 +59,7 @@ vec3 refracted_sky(vec3 direction) {
  // No separate sun disk: the Mie glow from phase_m already marks the sun, and the disk's
  // tiny thresholds were the suspected cause of a black square on the headset. NaN/Inf
  // are zeroed so a bad sample can never blank pixels.
- vec3 color=scattering;
+ vec3 color=scattering+sky_night_color*(1.0-day_amount)*smoothstep(-0.1,0.1,direction.y);
  if (any(isnan(color)) || any(isinf(color))) color=vec3(0.0);
  return pow(clamp(color,vec3(0.0),vec3(64.0)),vec3(1.0/(1.2+1.2*fade)));
 }
