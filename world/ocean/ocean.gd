@@ -4,7 +4,7 @@ extends Node3D
 
 const WAVE_COUNT := 64
 const GRAVITY := 9.81
-const SURFACE_SHADER := preload("res://ocean/shaders/surface.gdshader")
+const SURFACE_SHADER := preload("res://world/ocean/shaders/surface.gdshader")
 
 @export var settings: AbyssOceanSettings
 @export var sea_level := 0.0

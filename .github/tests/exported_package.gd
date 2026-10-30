@@ -5,7 +5,7 @@ func fail(message: String) -> void:
 	quit(1)
 func run() -> void:
 	print('EXPORTED renderer=',ProjectSettings.get_setting('rendering/renderer/rendering_method.android'),' MSAA=',ProjectSettings.get_setting('rendering/anti_aliasing/quality/msaa_3d.android'))
-	var index=load('res://terrain/baked/index.tres')
+	var index=load('res://world/terrain/baked/index.tres')
 	if not index or index.files.is_empty() or index.files.size()!=index.coordinates.size():
 		fail('Exported terrain index is empty or inconsistent')
 		return
@@ -17,7 +17,7 @@ func run() -> void:
 			return
 	var world=Node3D.new()
 	root.add_child(world)
-	var terrain=load('res://terrain/terrain.gd').new()
+	var terrain=load('res://world/terrain/terrain.gd').new()
 	world.add_child(terrain)
 	var deadline=Time.get_ticks_msec()+15000
 	while not terrain.all_ready and Time.get_ticks_msec()<deadline:

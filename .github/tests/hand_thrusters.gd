@@ -2,7 +2,7 @@ extends SceneTree
 
 var failures: Array[String] = []
 var fixture: Node3D
-var player: ShallowsSwimmer
+var player: AbyssSwimmer
 var xr: XRInterfaceExtension
 var trackers: Array[XRControllerTracker] = []
 
@@ -94,7 +94,7 @@ func run() -> void:
 	player.set_physics_process(true)
 	await frames(30)
 	player.set_physics_process(false)
-	check(player.velocity.length() > 4.0 and player.velocity.length() <= OceanHandThrusters.MAX_SPEED + 0.001, 'Both motors accelerate the real swimmer and obey the speed cap')
+	check(player.velocity.length() > 4.0 and player.velocity.length() <= AbyssHandThrusters.MAX_SPEED + 0.001, 'Both motors accelerate the real swimmer and obey the speed cap')
 	var dropped := system.motors[0].global_transform
 	trackers[0].set_input(&'grip', 0.0)
 	await frames()

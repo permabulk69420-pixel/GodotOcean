@@ -1,9 +1,9 @@
-class_name ShallowsGenerator
+class_name AbyssTerrainGenerator
 extends RefCounted
 ## Positive density is rock; negative density is water/air. Samples use world coordinates.
 const CORNERS := [Vector3i(0,0,0),Vector3i(1,0,0),Vector3i(1,1,0),Vector3i(0,1,0),Vector3i(0,0,1),Vector3i(1,0,1),Vector3i(1,1,1),Vector3i(0,1,1)]
 const TETRA := [[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6],[0,5,1,6]]
-var settings: ShallowsSettings
+var settings: AbyssTerrainSettings
 var broad := FastNoiseLite.new()
 var detail := FastNoiseLite.new()
 var segments: Array[Vector4] = []
@@ -13,8 +13,8 @@ var entrances := PackedVector3Array()
 var chamber := Vector3.ZERO
 var sun_direction := Vector3(0.3584,0.5299,-0.7685).normalized()
 
-func _init(config: ShallowsSettings = null) -> void:
-	settings=config if config else ShallowsSettings.new()
+func _init(config: AbyssTerrainSettings = null) -> void:
+	settings=config if config else AbyssTerrainSettings.new()
 	broad.seed=settings.seed
 	broad.frequency=0.027
 	broad.fractal_octaves=3
@@ -111,8 +111,8 @@ func lighting(p: Vector3,n: Vector3, subset: PackedInt32Array) -> Color:
 	var sand:=smoothstep(0.35,0.86,n.y)
 	return Color(sand,visibility,clampf(ao,0.16,1.0),1)
 
-func generate(coordinate: Vector3i) -> ShallowsChunkData:
-	var data:=ShallowsChunkData.new()
+func generate(coordinate: Vector3i) -> AbyssTerrainChunk:
+	var data:=AbyssTerrainChunk.new()
 	data.coordinate=coordinate
 	data.signature=settings.signature()
 	var cells:=roundi(settings.chunk_size/settings.voxel_size)

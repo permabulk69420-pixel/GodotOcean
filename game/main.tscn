@@ -1,10 +1,10 @@
 [gd_scene load_steps=13 format=3]
 
 [ext_resource type="Script" path="res://game/main.gd" id="1"]
-[ext_resource type="Script" path="res://ocean/ocean.gd" id="2"]
-[ext_resource type="Script" path="res://ocean/ocean_settings.gd" id="4"]
+[ext_resource type="Script" path="res://world/ocean/ocean.gd" id="2"]
+[ext_resource type="Script" path="res://world/ocean/ocean_settings.gd" id="4"]
 
-[ext_resource type="Script" path="res://terrain/terrain.gd" id="5"]
+[ext_resource type="Script" path="res://world/terrain/terrain.gd" id="5"]
 [ext_resource type="Script" path="res://player/swimmer.gd" id="6"]
 [ext_resource type="Script" path="res://player/hands/vr_hand.gd" id="7"]
 [ext_resource type="Script" path="res://player/thrusters/hand_thrusters.gd" id="8"]

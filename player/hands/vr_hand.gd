@@ -1,11 +1,11 @@
-class_name OceanVRHand
+class_name AbyssVRHand
 extends Node3D
 
 const LEFT = preload('res://player/hands/LeftHand.glb')
 const RIGHT = preload('res://player/hands/RightHand.glb')
 const SKIN_COLOUR = preload('res://player/hands/skin-colour.jpg')
 const SKIN_NORMAL = preload('res://player/hands/skin-normal.jpg')
-const MATERIAL_SHADER = preload('res://terrain/terrain.gdshader')
+const MATERIAL_SHADER = preload('res://world/terrain/terrain.gdshader')
 const GRIP_FIT = preload('res://player/hands/hand_grip_data.gd')
 
 @export var left_hand := true

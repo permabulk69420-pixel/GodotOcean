@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://nqp2mfq5id3l"
+path="res://.godot/imported/wave_cache.glsl-bc09997cb479ea31347b06e70397d3ff.res"
+
+[deps]
+
+source_file="res://world/ocean/shaders/wave_cache.glsl"
+dest_files=["res://.godot/imported/wave_cache.glsl-bc09997cb479ea31347b06e70397d3ff.res"]
+
+[params]
+

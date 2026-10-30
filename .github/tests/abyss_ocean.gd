@@ -26,7 +26,7 @@ func controller(tracker_name: StringName) -> XRPositionalTracker:
 	XRServer.add_tracker(tracker)
 	return tracker
 func reach_motor(side: int, tracker: XRPositionalTracker) -> void:
-	var hand: OceanVRHand=scene.player.thrusters.hands[side]
+	var hand: AbyssVRHand=scene.player.thrusters.hands[side]
 	var motor: Node3D=scene.player.thrusters.motors[side]
 	var offset: Vector3=hand.object_grip.global_position-hand.controller.global_position
 	var pose:=Transform3D(Basis.IDENTITY,scene.origin.to_local(motor.global_position-offset))

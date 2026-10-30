@@ -1,6 +1,6 @@
 shader_type spatial;
 render_mode world_vertex_coords;
-#include "res://ocean/shaders/caustics.gdshaderinc"
+#include "res://world/ocean/shaders/caustics.gdshaderinc"
 uniform vec3 tint : source_color = vec3(0.70, 0.63, 0.42);
 varying vec3 world_position;
 varying vec3 world_normal;

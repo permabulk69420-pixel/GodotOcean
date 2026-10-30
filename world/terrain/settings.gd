@@ -1,4 +1,4 @@
-class_name ShallowsSettings
+class_name AbyssTerrainSettings
 extends Resource
 
 @export var seed := 73129

@@ -1,4 +1,4 @@
-class_name ShallowsBakeIndex
+class_name AbyssTerrainBakeIndex
 extends Resource
 
 @export var signature := ''
@@ -10,5 +10,5 @@ var files: PackedStringArray:
 	get:
 		var result:=PackedStringArray()
 		for c in coordinates:
-			result.append('res://terrain/baked/%s_%s_%s.res'%[c.x,c.y,c.z])
+			result.append('res://world/terrain/baked/%s_%s_%s.res'%[c.x,c.y,c.z])
 		return result

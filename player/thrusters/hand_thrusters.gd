@@ -1,17 +1,17 @@
-class_name OceanHandThrusters
+class_name AbyssHandThrusters
 extends Node3D
 
 const MODEL = preload('res://player/thrusters/hand_thruster.glb')
 const MODEL_LEFT = preload('res://player/thrusters/hand_thruster_left.glb')
-const MATERIAL_SHADER = preload('res://terrain/terrain.gdshader')
+const MATERIAL_SHADER = preload('res://world/terrain/terrain.gdshader')
 const PICKUP_RADIUS := 0.45
 const GRAB_THRESHOLD := 0.55
 const PROPELLER_RATE := TAU * 7.3
 const PROPULSION_ACCELERATION := 36.0
 const MAX_SPEED := 22.5
 
-var player: ShallowsSwimmer
-var hands: Array[OceanVRHand] = []
+var player: AbyssSwimmer
+var hands: Array[AbyssVRHand] = []
 var motors: Array[Node3D] = []
 var held: Array[Node3D] = [null, null]
 var previous_grip := [0.0, 0.0]
@@ -23,7 +23,7 @@ var tracked_frames := 0
 var materials: Dictionary = {}
 
 func _ready() -> void:
-	player = get_parent() as ShallowsSwimmer
+	player = get_parent() as AbyssSwimmer
 	hands.assign([player.get_node('XROrigin3D/LeftHand/Hand'), player.get_node('XROrigin3D/RightHand/Hand')])
 	# Sample controllers and update palms before the swimmer integrates movement.
 	process_physics_priority = -20

@@ -1,4 +1,4 @@
-class_name ShallowsChunkData
+class_name AbyssTerrainChunk
 extends Resource
 
 @export var coordinate := Vector3i.ZERO

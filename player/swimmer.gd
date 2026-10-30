@@ -1,4 +1,4 @@
-class_name ShallowsSwimmer
+class_name AbyssSwimmer
 extends CharacterBody3D
 
 @export var swim_speed := 2.8
@@ -10,9 +10,9 @@ extends CharacterBody3D
 @onready var left: XRController3D=$XROrigin3D/LeftHand
 @onready var right: XRController3D=$XROrigin3D/RightHand
 @onready var collider: CollisionShape3D=$BodyShape
-@onready var thrusters: OceanHandThrusters=$HandThrusters
+@onready var thrusters: AbyssHandThrusters=$HandThrusters
 var ocean: AbyssOcean
-var terrain: ShallowsTerrain
+var terrain: AbyssTerrain
 var controls_enabled:=true
 var head_depth:=0.0
 var submerged:=false
@@ -91,8 +91,8 @@ func _physics_process(delta: float) -> void:
 	var response:=acceleration if wish.length_squared()>0.001 else drag
 	velocity=velocity.lerp(target,1.0-exp(-response*delta*maxf(immersion,0.1)))
 	if controls_enabled and immersion > 0.4 and thrusters.propulsion.length_squared() > 0.0001:
-		velocity += thrusters.propulsion * OceanHandThrusters.PROPULSION_ACCELERATION * delta
-		velocity = velocity.limit_length(OceanHandThrusters.MAX_SPEED)
+		velocity += thrusters.propulsion * AbyssHandThrusters.PROPULSION_ACCELERATION * delta
+		velocity = velocity.limit_length(AbyssHandThrusters.MAX_SPEED)
 	# Neutral swimming below the surface; a buoyant torso supports the head near it.
 	# As the body leaves water, swimming lift disappears and gravity takes over.
 	if head_depth<0.8 and wish.y> -0.15 and immersion>0.3:

@@ -1,7 +1,7 @@
 extends SceneTree
 var failures: Array[String]=[]
-var terrain: ShallowsTerrain
-var swimmer: ShallowsSwimmer
+var terrain: AbyssTerrain
+var swimmer: AbyssSwimmer
 var ocean: AbyssOcean
 var fixture: Node3D
 func _initialize() -> void: run.call_deferred()
@@ -19,13 +19,13 @@ func key(code: Key,pressed: bool) -> void:
 func ray(a: Vector3,b: Vector3) -> Dictionary:
 	return fixture.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(a,b,1))
 func check_surface_integrity() -> void:
-	var settings:=ShallowsSettings.new()
-	var index: ShallowsBakeIndex=load('res://terrain/baked/index.tres')
+	var settings:=AbyssTerrainSettings.new()
+	var index: AbyssTerrainBakeIndex=load('res://world/terrain/baked/index.tres')
 	var open_edges:=0
 	var folded:=0
 	var triangles:=0
 	for path in index.files:
-		var data: ShallowsChunkData=load(path)
+		var data: AbyssTerrainChunk=load(path)
 		var arrays:=data.mesh.surface_get_arrays(0)
 		var vertices: PackedVector3Array=arrays[Mesh.ARRAY_VERTEX]
 		var normals: PackedVector3Array=arrays[Mesh.ARRAY_NORMAL]
@@ -57,7 +57,7 @@ func run() -> void:
 	check_surface_integrity()
 	fixture=Node3D.new()
 	root.add_child(fixture)
-	terrain=ShallowsTerrain.new()
+	terrain=AbyssTerrain.new()
 	fixture.add_child(terrain)
 	var deadline:=Time.get_ticks_msec()+10000
 	while not terrain.all_ready and Time.get_ticks_msec()<deadline:
@@ -65,7 +65,7 @@ func run() -> void:
 		OS.delay_msec(1)
 	check(terrain.all_ready,'Baked terrain must finish loading')
 	await frames(3)
-	var generator:=ShallowsGenerator.new()
+	var generator:=AbyssTerrainGenerator.new()
 	for route in generator.routes:
 		for p in route: check(generator.density(p)< -2.0,'Cave network must have continuous swimmable clearance')
 	var seabed:=ray(Vector3(60,1,60),Vector3(60,-30,60))
@@ -76,8 +76,8 @@ func run() -> void:
 	check(not roof.is_empty() and not floor_hit.is_empty(),'Cave chamber must have a collidable roof and floor')
 	if not roof.is_empty(): check(roof.position.y<generator.height(chamber.x,chamber.z)-1.0,'Cave roof must be underground, below the seabed')
 	# Independently generated neighbouring chunks must share positions and normals at the boundary.
-	var a: ShallowsChunkData=load('res://terrain/baked/0_-1_-1.res')
-	var b: ShallowsChunkData=load('res://terrain/baked/0_-1_-2.res')
+	var a: AbyssTerrainChunk=load('res://world/terrain/baked/0_-1_-1.res')
+	var b: AbyssTerrainChunk=load('res://world/terrain/baked/0_-1_-2.res')
 	var av:=a.mesh.surface_get_arrays(0)
 	var bv:=b.mesh.surface_get_arrays(0)
 	var edge: Dictionary={}
@@ -96,9 +96,9 @@ func run() -> void:
 	check(shared>5,'Seam test must cover a real terrain boundary')
 	var repeated:=generator.generate(Vector3i(0,-1,-1))
 	check(repeated.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX].to_byte_array()==av[Mesh.ARRAY_VERTEX].to_byte_array(),'The same seed must reproduce the baked chunk')
-	var different:=ShallowsSettings.new()
+	var different:=AbyssTerrainSettings.new()
 	different.seed+=1
-	check(absf(ShallowsGenerator.new(different).height(24,24)-generator.height(24,24))>0.01,'Changing the seed must change geology')
+	check(absf(AbyssTerrainGenerator.new(different).height(24,24)-generator.height(24,24))>0.01,'Changing the seed must change geology')
 	var scene: Node3D=load('res://game/main.tscn').instantiate()
 	swimmer=scene.get_node('Player')
 	scene.remove_child(swimmer)

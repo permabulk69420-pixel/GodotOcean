@@ -3,8 +3,8 @@ extends Node3D
 signal submerged_changed(submerged: bool)
 
 @onready var ocean: AbyssOcean = $Ocean
-@onready var player: ShallowsSwimmer = $Player
-@onready var terrain: ShallowsTerrain = $Terrain
+@onready var player: AbyssSwimmer = $Player
+@onready var terrain: AbyssTerrain = $Terrain
 @onready var origin: XROrigin3D = $Player/XROrigin3D
 @onready var camera: XRCamera3D = $Player/XROrigin3D/Head
 @onready var left_controller: XRController3D = $Player/XROrigin3D/LeftHand

@@ -90,7 +90,7 @@ jobs:
         run: |
           mkdir -p artifacts
           godot --headless --editor --audio-driver Dummy --path . --import
-          godot --headless --path . --script res://terrain/bake.gd
+          godot --headless --path . --script res://world/terrain/bake.gd
           godot --headless --editor --path . --import
           godot --headless --path . --fixed-fps 60 --script res://.github/tests/shallows.gd > "$RUNNER_TEMP/shallows-physics.log" 2>&1 || { cat "$RUNNER_TEMP/shallows-physics.log"; exit 1; }
           cat "$RUNNER_TEMP/shallows-physics.log"
@@ -151,8 +151,8 @@ jobs:
               assert 'assets/game/main.gdc' in files
               assert 'assets/player/swimmer.gdc' in files
               print('Packaged terrain index:', [f for f in files if 'terrain/baked/index' in f])
-              assert any(f in files for f in ['assets/terrain/baked/index.tres', 'assets/terrain/baked/index.tres.remap'])
-              assert any(f.startswith('assets/terrain/baked/') and f.endswith('.res') for f in files)
+              assert any(f in files for f in ['assets/world/terrain/baked/index.tres', 'assets/world/terrain/baked/index.tres.remap'])
+              assert any(f.startswith('assets/world/terrain/baked/') and f.endswith('.res') for f in files)
               assert not any('/imgui-godot/' in f for f in files)
           PY
 

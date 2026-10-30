@@ -34,7 +34,7 @@ func _update() -> void:
 func _allocate() -> void:
 	if points.is_empty(): return
 	rd = RenderingServer.get_rendering_device()
-	var shader := rd.shader_create_from_spirv(load('res://ocean/shaders/wave_cache.glsl').get_spirv())
+	var shader := rd.shader_create_from_spirv(load('res://world/ocean/shaders/wave_cache.glsl').get_spirv())
 	resources.append(shader)
 	pipeline=rd.compute_pipeline_create(shader)
 	resources.append(pipeline)

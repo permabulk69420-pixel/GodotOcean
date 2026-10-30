@@ -1,6 +1,6 @@
-class_name ShallowsTerrain
+class_name AbyssTerrain
 extends Node3D
-@export var settings: ShallowsSettings
+@export var settings: AbyssTerrainSettings
 var observer: Node3D
 var chunks: Dictionary={}
 var pending: Array[String]=[]
@@ -9,16 +9,16 @@ var requested: Dictionary={}
 var material: ShaderMaterial
 var near_ready:=false
 var all_ready:=false
-var generator: ShallowsGenerator
+var generator: AbyssTerrainGenerator
 var fallback_jobs: Dictionary={}
-var completed: Array[ShallowsChunkData]=[]
+var completed: Array[AbyssTerrainChunk]=[]
 var result_mutex:=Mutex.new()
 
 func _ready() -> void:
-	if not settings: settings=ShallowsSettings.new()
-	generator=ShallowsGenerator.new(settings)
+	if not settings: settings=AbyssTerrainSettings.new()
+	generator=AbyssTerrainGenerator.new(settings)
 	material=ShaderMaterial.new()
-	material.shader=load('res://terrain/terrain.gdshader')
+	material.shader=load('res://world/terrain/terrain.gdshader')
 	var noise:=FastNoiseLite.new()
 	noise.seed=settings.seed
 	noise.frequency=0.12
@@ -27,8 +27,8 @@ func _ready() -> void:
 	texture.width=512;texture.height=512
 	texture.seamless=true;texture.generate_mipmaps=true;texture.noise=noise
 	material.set_shader_parameter('grain',texture)
-	if ResourceLoader.exists('res://terrain/baked/index.tres'):
-		var index: ShallowsBakeIndex=load('res://terrain/baked/index.tres')
+	if ResourceLoader.exists('res://world/terrain/baked/index.tres'):
+		var index: AbyssTerrainBakeIndex=load('res://world/terrain/baked/index.tres')
 		if index.signature==settings.signature() and not index.coordinates.is_empty():
 			var files:=index.files
 			var order:=[]
@@ -55,7 +55,7 @@ func _process(_delta: float) -> void:
 		var path:=pending[0]
 		if path.begins_with('res://'):
 			if ResourceLoader.load_threaded_get_status(path)==ResourceLoader.THREAD_LOAD_LOADED:
-				var data: ShallowsChunkData=ResourceLoader.load_threaded_get(path)
+				var data: AbyssTerrainChunk=ResourceLoader.load_threaded_get(path)
 				_install(data)
 				pending.pop_front()
 				requested.erase(path)
@@ -91,13 +91,13 @@ func request_chunk(coordinate: Vector3i) -> void:
 	all_ready=false
 
 func _generate(coordinate: Vector3i) -> void:
-	var worker:=ShallowsGenerator.new(settings)
+	var worker:=AbyssTerrainGenerator.new(settings)
 	var data:=worker.generate(coordinate)
 	result_mutex.lock()
 	completed.append(data)
 	result_mutex.unlock()
 
-func _install(data: ShallowsChunkData) -> void:
+func _install(data: AbyssTerrainChunk) -> void:
 	chunks[data.coordinate]=true
 	if not data.mesh: return
 	var chunk:=StaticBody3D.new()

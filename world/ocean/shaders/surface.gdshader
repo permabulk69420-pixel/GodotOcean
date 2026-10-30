@@ -4,7 +4,7 @@ uniform float simulation_time;
 uniform sampler2D cached_displacement : filter_nearest;
 uniform sampler2D cached_normals : filter_nearest;
 uniform bool cache_ready = false;
-#include "res://ocean/shaders/sky_radiance.gdshaderinc"
+#include "res://world/ocean/shaders/sky_radiance.gdshaderinc"
 
 uniform sampler2D detail_normals : repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D detail_texture : repeat_enable, filter_linear_mipmap_anisotropic;
