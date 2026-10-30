@@ -94,6 +94,7 @@ func load_kit() -> void:
 			vertices = arrays[Mesh.ARRAY_VERTEX],
 			normals = arrays[Mesh.ARRAY_NORMAL],
 			uvs = arrays[Mesh.ARRAY_TEX_UV] if arrays[Mesh.ARRAY_TEX_UV] != null else PackedVector2Array(),
+			tangents = arrays[Mesh.ARRAY_TANGENT] if arrays[Mesh.ARRAY_TANGENT] != null else PackedFloat32Array(),
 			colours = arrays[Mesh.ARRAY_COLOR] if arrays[Mesh.ARRAY_COLOR] != null else PackedColorArray(),
 			indices = arrays[Mesh.ARRAY_INDEX],
 		}
@@ -187,6 +188,7 @@ func merge(pieces: Array, is_rock: bool) -> ArrayMesh:
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
+	var tangents := PackedFloat32Array()
 	var colours := PackedColorArray()
 	var indices := PackedInt32Array()
 	for piece in pieces:
@@ -207,6 +209,10 @@ func merge(pieces: Array, is_rock: bool) -> ArrayMesh:
 			for c in src_colours:
 				colours.append(Color(c.r, fposmod(c.g + piece[2], 1.0), c.b))
 			uvs.append_array(source.uvs)
+			var src_tangents: PackedFloat32Array = source.tangents
+			for i in range(0, src_tangents.size(), 4):
+				var t: Vector3 = rotation * Vector3(src_tangents[i], src_tangents[i + 1], src_tangents[i + 2])
+				tangents.append_array(PackedFloat32Array([t.x, t.y, t.z, src_tangents[i + 3]]))
 		for i: int in source.indices:
 			indices.append(i + offset)
 	var arrays := []
@@ -216,6 +222,7 @@ func merge(pieces: Array, is_rock: bool) -> ArrayMesh:
 	arrays[Mesh.ARRAY_COLOR] = colours
 	if not is_rock:
 		arrays[Mesh.ARRAY_TEX_UV] = uvs
+		arrays[Mesh.ARRAY_TANGENT] = tangents
 	arrays[Mesh.ARRAY_INDEX] = indices
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)

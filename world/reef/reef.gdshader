@@ -58,19 +58,8 @@ void fragment() {
 	METALLIC = 0.0;
 	SPECULAR = 0.35;
 
-	// Tangent frame from screen derivatives (the merged meshes carry no tangents).
-	vec3 dp1 = dFdx(VERTEX);
-	vec3 dp2 = dFdy(VERTEX);
-	vec2 duv1 = dFdx(UV);
-	vec2 duv2 = dFdy(UV);
-	vec3 dp2perp = cross(dp2, NORMAL);
-	vec3 dp1perp = cross(NORMAL, dp1);
-	vec3 t = dp2perp * duv1.x + dp1perp * duv2.x;
-	vec3 b = dp2perp * duv1.y + dp1perp * duv2.y;
-	float inv = inversesqrt(max(max(dot(t, t), dot(b, b)), 0.00000001));
-	vec2 xy = texture(normal_map, UV).xy * 2.0 - 1.0;
-	vec3 detail = vec3(xy, sqrt(max(1.0 - dot(xy, xy), 0.0)));
-	NORMAL = normalize(mat3(t * inv, b * inv, NORMAL) * detail);
+	NORMAL_MAP = vec3(texture(normal_map, UV).xy, 0.5);
+	NORMAL_MAP.z = 0.5 + 0.5 * sqrt(max(1.0 - dot(NORMAL_MAP.xy * 2.0 - 1.0, NORMAL_MAP.xy * 2.0 - 1.0), 0.0));
 
 	float mask = texture(glow_map, UV).r;
 	float m = max(albedo.r, max(albedo.g, albedo.b));
