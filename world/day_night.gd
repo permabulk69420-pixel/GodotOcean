@@ -19,13 +19,18 @@ const LOW_SUN_COLOUR := Color(1.0, 0.62, 0.38)
 const MOON_COLOUR := Color(0.45, 0.58, 1.0)
 const SUN_ENERGY := 1.6
 const MOON_ENERGY := 0.035
+# How fast each colour of light is absorbed per metre of water (red goes first, blue lasts longest).
+const ABSORPTION := Vector3(0.20, 0.05, 0.022)
+const FOG_DARKENING_PER_METRE := 0.04
+const AMBIENT_DARKENING_PER_METRE := 0.045
+const FOG_DENSITY_PER_METRE := 0.0012
 
 # Day values match the original scene; night values are almost black blue. At night the surface
 # fog also tints the sky (sky_affect) so it is a faint deep blue instead of pure black.
 const SURFACE_DAY := {ambient = Color(0.28, 0.45, 0.55), ambient_energy = 0.45, fog = Color(0.55, 0.72, 0.79), fog_density = 0.00012, sun_scatter = 0.2, sky_affect = 0.0}
 const SURFACE_NIGHT := {ambient = Color(0.035, 0.07, 0.16), ambient_energy = 0.45, fog = Color(0.006, 0.014, 0.036), fog_density = 0.00035, sun_scatter = 0.0, sky_affect = 1.0}
-const UNDERWATER_DAY := {ambient = Color(0.06, 0.32, 0.40), ambient_energy = 0.38, fog = Color(0.018, 0.22, 0.29), fog_density = 0.026, sun_scatter = 0.0, sky_affect = 1.0}
-const UNDERWATER_NIGHT := {ambient = Color(0.012, 0.05, 0.11), ambient_energy = 0.4, fog = Color(0.002, 0.011, 0.026), fog_density = 0.030, sun_scatter = 0.0, sky_affect = 1.0}
+const UNDERWATER_DAY := {ambient = Color(0.06, 0.32, 0.40), ambient_energy = 0.38, fog = Color(0.014, 0.17, 0.25), fog_density = 0.045, sun_scatter = 0.0, sky_affect = 1.0}
+const UNDERWATER_NIGHT := {ambient = Color(0.012, 0.05, 0.11), ambient_energy = 0.4, fog = Color(0.002, 0.011, 0.026), fog_density = 0.050, sun_scatter = 0.0, sky_affect = 1.0}
 
 var time := 0.0
 var sun_direction := Vector3.UP
@@ -86,10 +91,10 @@ func apply_environment(environment: Environment, day: Dictionary, night: Diction
 	environment.fog_sun_scatter = lerpf(night.sun_scatter, day.sun_scatter, amount)
 	environment.fog_sky_affect = lerpf(night.sky_affect, day.sky_affect, amount)
 
-func apply(sun: DirectionalLight3D, sky_sun: DirectionalLight3D, surface: Environment, underwater: Environment, water: ShaderMaterial, terrain: ShaderMaterial, delta: float) -> void:
+func apply(sun: DirectionalLight3D, sky_sun: DirectionalLight3D, surface: Environment, underwater: Environment, water: ShaderMaterial, terrain: ShaderMaterial, delta: float, depth: float = 0.0) -> void:
 	var direction := light_direction()
 	face_light(sun, direction)
-	sun.light_color = light_colour()
+	sun.light_color = absorb(light_colour(), depth)
 	sky_timer += delta
 	if sky_timer >= sky_update_interval:
 		sky_timer = 0.0
@@ -98,7 +103,22 @@ func apply(sun: DirectionalLight3D, sky_sun: DirectionalLight3D, surface: Enviro
 		sky_sun.light_energy = maxf(sun_energy, 0.001)
 	apply_environment(surface, SURFACE_DAY, SURFACE_NIGHT)
 	apply_environment(underwater, UNDERWATER_DAY, UNDERWATER_NIGHT)
+	apply_depth(underwater, depth)
 	water.set_shader_parameter("sky_sun_direction", sun_direction)
 	water.set_shader_parameter("sky_sun_color", sun_colour)
 	water.set_shader_parameter("day_amount", daylight)
 	terrain.set_shader_parameter("sun_shadow_strength", daylight)
+
+## Tint a light colour the way the water does: the deeper you are, the more red is lost.
+func absorb(colour: Color, depth: float) -> Color:
+	if depth <= 0.0:
+		return colour
+	return Color(colour.r * exp(-ABSORPTION.x * depth), colour.g * exp(-ABSORPTION.y * depth), colour.b * exp(-ABSORPTION.z * depth))
+
+## Deeper water is murkier, darker and dimmer: denser fog, darker fog colour, less ambient light.
+func apply_depth(environment: Environment, depth: float) -> void:
+	if depth <= 0.0:
+		return
+	environment.fog_density += depth * FOG_DENSITY_PER_METRE
+	environment.fog_light_color = environment.fog_light_color * exp(-depth * FOG_DARKENING_PER_METRE)
+	environment.ambient_light_energy *= exp(-depth * AMBIENT_DARKENING_PER_METRE)

@@ -83,7 +83,7 @@ func _on_stopping() -> void:
 
 func _process(delta: float) -> void:
 	day_night.advance(delta)
-	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, terrain.material, delta)
+	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, terrain.material, delta, maxf(player.head_depth, 0.0) if submerged else 0.0)
 	var sources := PackedVector3Array([camera.global_position, left_controller.global_position, right_controller.global_position])
 	var boosts := PackedFloat32Array([0.0, 0.0, 0.0])
 	for i in range(player.thrusters.motors.size()):
@@ -110,7 +110,8 @@ func update_water_state() -> void:
 		submerged = next
 		world.environment = underwater_environment if submerged else surface_environment
 		submerged_changed.emit(submerged)
-	var energy := day_night.light_energy() * (exp(-maxf(depth, 0.0) * 0.045) if submerged else 1.0)
+	# The colour absorption in day_night.gd already dims the light with depth; this is the rest.
+	var energy := day_night.light_energy() * (exp(-maxf(depth, 0.0) * 0.02) if submerged else 1.0)
 	if not is_equal_approx(sun.light_energy,energy): sun.light_energy=energy
 
 func release_depth() -> void:
