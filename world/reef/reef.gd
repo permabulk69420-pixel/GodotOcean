@@ -14,37 +14,40 @@ const SET_PIECE_VIEW_DISTANCE := 160.0
 # mesh: names inside the kit; one is picked at random per piece.
 # zone: noise frequency and threshold decide where the species may grow, so it forms patches.
 var species := [
-	{name = 'boulder', kind = 'rock', mesh = ['RockBoulderA', 'RockBoulderB', 'RockBoulderC'], clusters = 26, per = Vector2i(2, 6), radius = 4.0, zone = Vector2(0.018, -0.1),
+	{name = 'boulder', rubble = 1.1, kind = 'rock', mesh = ['RockBoulderA', 'RockBoulderB', 'RockBoulderC'], clusters = 26, per = Vector2i(2, 6), radius = 4.0, zone = Vector2(0.018, -0.1),
 		ground = Vector2(-22.0, -2.0), slope = Vector2(0.0, 1.2), scale = Vector2(0.8, 2.2)},
-	{name = 'slab', kind = 'rock', mesh = ['RockSlabA', 'RockSlabB'], clusters = 10, per = Vector2i(1, 3), radius = 3.0, zone = Vector2(0.02, -0.05),
+	{name = 'slab', rubble = 1.4, kind = 'rock', mesh = ['RockSlabA', 'RockSlabB'], clusters = 10, per = Vector2i(1, 3), radius = 3.0, zone = Vector2(0.02, -0.05),
 		ground = Vector2(-22.0, -2.0), slope = Vector2(0.0, 0.5), scale = Vector2(0.8, 1.8)},
-	{name = 'coral_branching', kind = 'coral', mesh = ['CoralBranchingA', 'CoralBranchingB'], clusters = 22, per = Vector2i(5, 12), radius = 3.2, zone = Vector2(0.03, 0.12),
+	{name = 'coral_branching', rubble = 0.75, kind = 'coral', mesh = ['CoralBranchingA', 'CoralBranchingB'], clusters = 22, per = Vector2i(5, 12), radius = 3.2, zone = Vector2(0.03, 0.12),
 		ground = Vector2(-18.0, -3.0), slope = Vector2(0.0, 0.7), scale = Vector2(0.8, 1.6)},
-	{name = 'coral_brain', kind = 'coral', mesh = ['CoralBrain'], clusters = 16, per = Vector2i(4, 9), radius = 2.8, zone = Vector2(0.03, 0.05),
+	{name = 'coral_brain', rubble = 0.65, kind = 'coral', mesh = ['CoralBrain'], clusters = 16, per = Vector2i(4, 9), radius = 2.8, zone = Vector2(0.03, 0.05),
 		ground = Vector2(-18.0, -3.0), slope = Vector2(0.0, 0.6), scale = Vector2(0.8, 1.8)},
-	{name = 'coral_table', kind = 'coral', mesh = ['CoralTable'], clusters = 10, per = Vector2i(2, 5), radius = 2.8, zone = Vector2(0.03, 0.08),
+	{name = 'coral_table', rubble = 0.8, kind = 'coral', mesh = ['CoralTable'], clusters = 10, per = Vector2i(2, 5), radius = 2.8, zone = Vector2(0.03, 0.08),
 		ground = Vector2(-18.0, -3.0), slope = Vector2(0.0, 0.5), scale = Vector2(0.8, 1.6)},
-	{name = 'coral_tube', kind = 'coral', mesh = ['CoralTube'], clusters = 14, per = Vector2i(3, 7), radius = 2.2, zone = Vector2(0.03, 0.2),
+	{name = 'coral_tube', rubble = 0.55, kind = 'coral', mesh = ['CoralTube'], clusters = 14, per = Vector2i(3, 7), radius = 2.2, zone = Vector2(0.03, 0.2),
 		ground = Vector2(-18.0, -3.0), slope = Vector2(0.0, 0.8), scale = Vector2(0.8, 1.6)},
-	{name = 'coral_fan', kind = 'coral', mesh = ['CoralFan'], clusters = 14, per = Vector2i(3, 7), radius = 2.5, zone = Vector2(0.03, 0.1),
+	{name = 'coral_fan', rubble = 0.35, kind = 'coral', mesh = ['CoralFan'], clusters = 14, per = Vector2i(3, 7), radius = 2.5, zone = Vector2(0.03, 0.1),
 		ground = Vector2(-18.0, -3.0), slope = Vector2(0.1, 1.0), scale = Vector2(0.9, 1.8)},
-	{name = 'anemone', kind = 'coral', mesh = ['Anemone'], clusters = 12, per = Vector2i(3, 8), radius = 2.0, zone = Vector2(0.03, 0.0),
+	{name = 'anemone', rubble = 0.35, kind = 'coral', mesh = ['Anemone'], clusters = 12, per = Vector2i(3, 8), radius = 2.0, zone = Vector2(0.03, 0.0),
 		ground = Vector2(-18.0, -3.0), slope = Vector2(0.0, 0.6), scale = Vector2(0.9, 1.8)},
-	{name = 'kelp', kind = 'coral', mesh = ['KelpStalkA', 'KelpStalkB'], clusters = 16, per = Vector2i(3, 8), radius = 3.0, zone = Vector2(0.02, 0.0),
+	{name = 'kelp', rubble = 0.25, kind = 'coral', mesh = ['KelpStalkA', 'KelpStalkB'], clusters = 16, per = Vector2i(3, 8), radius = 3.0, zone = Vector2(0.02, 0.0),
 		ground = Vector2(-22.0, -5.5), slope = Vector2(0.0, 0.4), scale = Vector2(0.7, 1.2)},
 ]
 
 # Large single pieces. spacing keeps two of the same kind apart; collide copies the kit's collision.
 var set_pieces := [
-	{name = 'arch', kind = 'rock', mesh = 'RockArch', count = 3, spacing = 70.0, ground = Vector2(-24.0, -4.0), slope = Vector2(0.0, 0.6), scale = Vector2(0.9, 1.3), clear = 12.0},
-	{name = 'spire', kind = 'rock', mesh = 'RockSpire', count = 4, spacing = 55.0, ground = Vector2(-24.0, -4.0), slope = Vector2(0.0, 0.8), scale = Vector2(0.8, 1.3), clear = 6.0},
-	{name = 'mound', kind = 'coral', mesh = 'CoralMound', count = 6, spacing = 40.0, ground = Vector2(-20.0, -4.0), slope = Vector2(0.0, 0.5), scale = Vector2(0.9, 1.4), clear = 6.0},
+	{name = 'arch', rubble = 6.5, kind = 'rock', mesh = 'RockArch', count = 3, spacing = 70.0, ground = Vector2(-24.0, -4.0), slope = Vector2(0.0, 0.6), scale = Vector2(0.9, 1.3), clear = 12.0},
+	{name = 'spire', rubble = 2.6, kind = 'rock', mesh = 'RockSpire', count = 4, spacing = 55.0, ground = Vector2(-24.0, -4.0), slope = Vector2(0.0, 0.8), scale = Vector2(0.8, 1.3), clear = 6.0},
+	{name = 'mound', rubble = 3.6, kind = 'coral', mesh = 'CoralMound', count = 6, spacing = 40.0, ground = Vector2(-20.0, -4.0), slope = Vector2(0.0, 0.5), scale = Vector2(0.9, 1.4), clear = 6.0},
 ]
 
 @export var enabled := true
 ## Build simpler versions (levels of detail) of every merged patch, which Godot swaps in with
 ## distance, so faraway reef costs far fewer triangles than the full-detail pieces up close.
 @export var generate_lods := true
+## How far the stony rubble spreads around each piece on the seabed, relative to its size.
+## 0 turns it off. The terrain shader draws it from the mask built in make_rubble_mask().
+@export var rubble_spread := 1.0
 @export var keep_clear_of_mushroom := 28.0
 @export var keep_clear_of_entrances := 8.0
 
@@ -52,6 +55,10 @@ var meshes: Dictionary = {}
 var collisions: Dictionary = {}
 var coral_material: ShaderMaterial
 var piece_count := 0
+# x, z and rubble radius of every placed piece, for the rubble mask.
+var rubble_spots: Array[Vector3] = []
+
+const RUBBLE_TEXELS_PER_METRE := 2.0
 
 func set_daylight(daylight: float) -> void:
 	if coral_material:
@@ -85,6 +92,32 @@ func _ready() -> void:
 			add_child(instance)
 	for index in range(set_pieces.size()):
 		place_set_pieces(index, set_pieces[index], generator, mushroom, half, rng, rock_material)
+	make_rubble_mask(terrain, half)
+
+## Paints a soft disc of "rubble" around every placed piece into a small texture covering the
+## seabed (2 texels per metre); the terrain shader turns it into stony ground and a little shade.
+func make_rubble_mask(terrain: AbyssTerrain, half: Vector2) -> void:
+	if rubble_spread <= 0.0 or rubble_spots.is_empty():
+		return
+	var size := Vector2i(ceili(half.x * 2.0 * RUBBLE_TEXELS_PER_METRE), ceili(half.y * 2.0 * RUBBLE_TEXELS_PER_METRE))
+	var data := PackedByteArray()
+	data.resize(size.x * size.y)
+	for spot in rubble_spots:
+		var radius := spot.z * rubble_spread
+		var outer := radius + 1.2
+		var cx := (spot.x + half.x) * RUBBLE_TEXELS_PER_METRE
+		var cz := (spot.y + half.y) * RUBBLE_TEXELS_PER_METRE
+		var reach := outer * RUBBLE_TEXELS_PER_METRE
+		for z in range(maxi(floori(cz - reach), 0), mini(ceili(cz + reach) + 1, size.y)):
+			for x in range(maxi(floori(cx - reach), 0), mini(ceili(cx + reach) + 1, size.x)):
+				var distance := Vector2(x + 0.5 - cx, z + 0.5 - cz).length() / RUBBLE_TEXELS_PER_METRE
+				var value := roundi((1.0 - smoothstep(radius, outer, distance)) * 255.0)
+				var i := x + z * size.x
+				if value > data[i]:
+					data[i] = value
+	var image := Image.create_from_data(size.x, size.y, false, Image.FORMAT_L8, data)
+	terrain.material.set_shader_parameter('reef_mask', ImageTexture.create_from_image(image))
+	terrain.material.set_shader_parameter('reef_mask_rect', Vector4(-half.x, -half.y, half.x * 2.0, half.y * 2.0))
 
 ## Reads every mesh (and its collision, if any) out of the kit by name. Node positions in the kit
 ## are only a display layout, so only the meshes themselves are used.
@@ -141,6 +174,7 @@ func place_species(index: int, def: Dictionary, generator: AbyssTerrainGenerator
 			var key := Vector2i(floori(p.x / CELL), floori(p.y / CELL))
 			if not cells[def.kind].has(key): cells[def.kind][key] = []
 			cells[def.kind][key].append([def.mesh[rng.randi() % def.mesh.size()], Transform3D(basis, Vector3(p.x, ground - 0.06, p.y)), rng.randf()])
+			rubble_spots.append(Vector3(p.x, p.y, def.rubble * scale))
 			piece_count += 1
 
 func place_set_pieces(index: int, def: Dictionary, generator: AbyssTerrainGenerator, mushroom: AbyssMushroom, half: Vector2, rng: RandomNumberGenerator, rock_material: Material) -> void:
@@ -162,6 +196,7 @@ func place_set_pieces(index: int, def: Dictionary, generator: AbyssTerrainGenera
 		spots.append(p)
 	for p in spots:
 		var scale: float = rng.randf_range(def.scale.x, def.scale.y)
+		rubble_spots.append(Vector3(p.x, p.y, def.rubble * scale))
 		var holder := StaticBody3D.new()
 		holder.transform = Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(scale, scale, scale)), Vector3(p.x, generator.height(p.x, p.y) - 0.1, p.y))
 		var instance := MeshInstance3D.new()

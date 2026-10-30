@@ -29,6 +29,14 @@ uniform vec3 rock_tint = vec3(0.92, 0.95, 0.9);
 // Baked sun occlusion darkens the surface only while the sun is up (1 = day, 0 = night).
 uniform float sun_shadow_strength = 1.0;
 uniform float sand_normal_strength = 1.0;
+// Rubbly, stony ground around reef pieces so they sit in the seabed instead of on clean sand.
+// reef.gd paints where the pieces are into reef_mask (1 next to a piece, 0 in open sand).
+uniform sampler2D reef_mask : hint_default_black, filter_linear;
+uniform vec4 reef_mask_rect = vec4(-80.0, -80.0, 160.0, 160.0);
+uniform float rubble_tile_size = 0.9;
+uniform vec3 rubble_tint = vec3(1.0, 0.98, 0.9);
+// How much of the ground the rubble covers right next to a piece (0..1).
+uniform float rubble_cover = 0.85;
 uniform float rock_normal_strength = 1.0;
 uniform vec3 emitted : source_color = vec3(0.0);
 
@@ -93,6 +101,10 @@ void fragment() {
 
  // Slow tint drift hides the texture repeat on open seabed.
  float drift = mix(0.86, 1.14, texture(grain, world_position.xz * 0.012).r);
+ float near_reef = texture(reef_mask, (world_position.xz - reef_mask_rect.xy) / reef_mask_rect.zw).r;
+ float rubble_edge = texture(grain, world_position.xz * 0.4).r - 0.5;
+ vec2 rubble_uv = world_position.xz / rubble_tile_size;
+ vec2 rubble_dx = dFdx(rubble_uv), rubble_dy = dFdy(rubble_uv);
 
  vec3 sand = vec3(0.0);
  vec3 sand_n = n;
@@ -102,6 +114,15 @@ void fragment() {
   // Whiteout blend onto the world normal; sand is projected from above.
   t = vec3(t.xy + n.xz, abs(t.z) * n.y);
   sand_n = normalize(t.xzy);
+  // Stony rubble around reef pieces: the rock texture at pebble scale, with a ragged edge.
+  float rubble = smoothstep(0.12, 0.8, near_reef + rubble_edge * 0.5);
+  if (rubble > 0.004) {
+   vec3 stones = textureGrad(rock_colour, rubble_uv, rubble_dx, rubble_dy).rgb * rubble_tint * drift;
+   vec3 bumps = unpack_normal(textureGrad(rock_normal, rubble_uv, rubble_dx, rubble_dy), 1.3);
+   bumps = vec3(bumps.xy + n.xz, abs(bumps.z) * n.y);
+   sand = mix(sand, stones, rubble * rubble_cover);
+   sand_n = normalize(mix(sand_n, normalize(bumps.xzy), rubble));
+  }
  }
  vec3 rock = vec3(0.0);
  vec3 rock_n = n;
@@ -134,7 +155,8 @@ void fragment() {
  NORMAL = normalize((VIEW_MATRIX * vec4(shaded_normal, 0.0)).xyz);
  ROUGHNESS = mix(0.82, 0.94, sand_amount);
  SPECULAR = 0.16;
- AO = COLOR.b;
+ // Ground right against a reef piece is a little shaded by it.
+ AO = COLOR.b * (1.0 - 0.3 * smoothstep(0.55, 1.0, near_reef) * sand_amount);
  AO_LIGHT_AFFECT = 0.0;
  // No caustics where the baked sun visibility says the seabed is in shade.
  caustic = mix(1.0, caustic, sunlight);

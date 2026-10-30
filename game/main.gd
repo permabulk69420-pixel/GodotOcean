@@ -46,8 +46,10 @@ func _ready() -> void:
 	underwater_sky.shader = UNDERWATER_SKY_SHADER
 	var water_sky := Sky.new()
 	water_sky.sky_material = underwater_sky
+	# A small lighting copy refiltered in one go, so the fog and the open water always change in the
+	# same frame (spreading it over several frames shows a band at the horizon while it catches up).
 	water_sky.radiance_size = Sky.RADIANCE_SIZE_64
-	water_sky.process_mode = Sky.PROCESS_MODE_INCREMENTAL
+	water_sky.process_mode = Sky.PROCESS_MODE_QUALITY
 	underwater_environment.sky = water_sky
 	underwater_environment.fog_aerial_perspective = 1.0
 	RenderingServer.global_shader_parameter_set(&"water_surface_height", ocean.sea_level)

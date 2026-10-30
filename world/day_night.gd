@@ -108,8 +108,8 @@ func apply(sun: DirectionalLight3D, sky_sun: DirectionalLight3D, surface: Enviro
 		face_light(sky_sun, sun_direction)
 		sky_sun.light_color = sun_colour
 		sky_sun.light_energy = maxf(sun_energy, 0.001)
-		if underwater_sky:
-			update_underwater_sky(underwater_sky, depth)
+	if underwater_sky:
+		update_underwater_sky(underwater_sky, depth)
 	apply_environment(surface, SURFACE_DAY, SURFACE_NIGHT)
 	apply_environment(underwater, UNDERWATER_DAY, UNDERWATER_NIGHT)
 	apply_depth(underwater, depth)
@@ -130,11 +130,11 @@ func update_underwater_light() -> void:
 	# Caustics need a reasonably high sun; they fade out through sunset and are off at night.
 	RenderingServer.global_shader_parameter_set(&"underwater_caustics", smoothstep(0.06, 0.35, sun_direction.y))
 
-## The underwater sky only changes when day or depth has moved noticeably: every change makes Godot
-## refilter its lighting, so it is never touched every frame.
+## The underwater sky only changes when day or depth has moved noticeably (a quarter of a metre
+## is about a 1% change in brightness): every change makes Godot refilter its lighting.
 func update_underwater_sky(material: ShaderMaterial, depth: float) -> void:
 	var stepped_depth := snappedf(maxf(depth, 0.0), 0.25)
-	if absf(daylight - underwater_sky_day) > 0.004:
+	if absf(daylight - underwater_sky_day) > 0.01 or (daylight != underwater_sky_day and (daylight == 0.0 or daylight == 1.0)):
 		underwater_sky_day = daylight
 		material.set_shader_parameter("day_amount", daylight)
 	if absf(stepped_depth - underwater_sky_depth) > 0.01:
