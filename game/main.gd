@@ -67,6 +67,9 @@ func _ready() -> void:
 		get_viewport().use_xr = true
 		# Mobile Vulkan uses XR variable-rate shading for fixed foveated rendering.
 		get_viewport().vrs_mode = Viewport.VRS_XR
+		# On the Mobile renderer the foveation is tuned here (foveation_level is Compatibility-only).
+		# The default strength is 1.0; higher shades more of the outer view coarsely.
+		if "vrs_strength" in xr: xr.set("vrs_strength", 2.0)
 		if xr.has_method("get_available_display_refresh_rates"):
 			var rates = xr.get_available_display_refresh_rates()
 			if rates.has(72.0): xr.set_display_refresh_rate(72.0)
