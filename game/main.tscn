@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://player/hands/vr_hand.gd" id="7"]
 [ext_resource type="Script" path="res://player/thrusters/hand_thrusters.gd" id="8"]
 [ext_resource type="Script" path="res://world/day_night.gd" id="9"]
+[ext_resource type="Script" path="res://world/plankton/plankton.gd" id="10"]
 
 [sub_resource type="CapsuleShape3D" id="SwimmerShape"]
 radius = 0.28
@@ -106,3 +107,6 @@ sky_mode = 2
 
 [node name="DayNight" type="Node" parent="."]
 script = ExtResource("9")
+
+[node name="Plankton" type="MultiMeshInstance3D" parent="."]
+script = ExtResource("10")
