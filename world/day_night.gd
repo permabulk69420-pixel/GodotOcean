@@ -24,7 +24,7 @@ const MOON_ENERGY := 0.09
 # fog also tints the sky (sky_affect) so it is a faint deep blue instead of pure black.
 const SURFACE_DAY := {ambient = Color(0.28, 0.45, 0.55), ambient_energy = 0.45, fog = Color(0.55, 0.72, 0.79), fog_density = 0.00012, sun_scatter = 0.2, sky_affect = 0.0}
 const SURFACE_NIGHT := {ambient = Color(0.035, 0.07, 0.16), ambient_energy = 0.45, fog = Color(0.006, 0.014, 0.036), fog_density = 0.00035, sun_scatter = 0.0, sky_affect = 1.0}
-const UNDERWATER_DAY := {ambient = Color(0.06, 0.32, 0.40), ambient_energy = 0.38, fog = Color(0.018, 0.22, 0.29), fog_density = 0.026, sun_scatter = 0.2, sky_affect = 1.0}
+const UNDERWATER_DAY := {ambient = Color(0.06, 0.32, 0.40), ambient_energy = 0.38, fog = Color(0.018, 0.22, 0.29), fog_density = 0.026, sun_scatter = 0.0, sky_affect = 1.0}
 const UNDERWATER_NIGHT := {ambient = Color(0.012, 0.05, 0.11), ambient_energy = 0.6, fog = Color(0.002, 0.011, 0.026), fog_density = 0.030, sun_scatter = 0.0, sky_affect = 1.0}
 
 var time := 0.0
