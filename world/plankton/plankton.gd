@@ -6,7 +6,7 @@ extends MultiMeshInstance3D
 const TRAIL_COUNT := 64
 const SHADER := preload('res://world/plankton/plankton.gdshader')
 
-@export var count := 2400
+@export var count := 3600
 @export var volume_size := 16.0
 ## Seconds between trail samples; with 64 slots this decides how long a trail lasts.
 @export var sample_interval := 0.16

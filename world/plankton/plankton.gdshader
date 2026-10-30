@@ -12,7 +12,7 @@ uniform float day_amount = 0.0;
 uniform vec3 current = vec3(0.10, 0.0, 0.06);
 uniform vec3 colour_a : source_color = vec3(0.03, 0.25, 1.0);
 uniform vec3 colour_b : source_color = vec3(0.12, 0.85, 1.0);
-uniform float base_glow = 0.7;
+uniform float base_glow = 1.5;
 uniform float visibility_range = 12.0;
 uniform vec4 trail[TRAIL_COUNT];
 uniform float trail_power[TRAIL_COUNT];
@@ -53,10 +53,16 @@ void vertex() {
 	flare = min(flare, 3.0);
 
 	float daylight_scale = mix(1.0, 0.04, day_amount);
-	brightness = (idle * daylight_scale + flare) * edge * range;
+	brightness = (idle * daylight_scale + flare * 1.8) * edge * range;
 	float warm = clamp(step(0.85, seed.y) * 0.7 + flare * 0.35, 0.0, 1.0);
 	tint = mix(colour_a, colour_b, warm);
-	float size = (0.016 + 0.03 * seed.z) * (1.0 + flare * 0.5);
+	// Keep every speck a small, steady glint on screen: close ones are capped, far ones are
+	// not allowed to shrink below a few pixels (which would flicker).
+	float size = (0.014 + 0.02 * seed.z) * (1.0 + flare * 0.15);
+	// A few rarer, slightly larger specks give the field some depth.
+	size *= 1.0 + 1.2 * step(0.965, seed.x);
+	size = clamp(size, dist * 0.0045, dist * 0.0095);
+	brightness *= smoothstep(0.25, 0.9, dist);
 	if (brightness < 0.004) {
 		size = 0.0;
 	}
@@ -66,7 +72,9 @@ void vertex() {
 
 void fragment() {
 	vec2 c = UV * 2.0 - 1.0;
-	float soft = 1.0 - smoothstep(0.0, 1.0, dot(c, c));
-	ALBEDO = tint * brightness;
-	ALPHA = soft * soft;
+	float r2 = dot(c, c);
+	// A tight bright core with a faint halo reads as a point of light.
+	float core = exp(-r2 * 9.0) + 0.18 * exp(-r2 * 2.5);
+	ALBEDO = mix(tint, vec3(1.0), 0.25 * exp(-r2 * 14.0)) * brightness;
+	ALPHA = clamp(core, 0.0, 1.0) * (1.0 - smoothstep(0.7, 1.0, r2));
 }
