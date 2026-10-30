@@ -42,7 +42,7 @@ jobs:
       - name: Verify the ocean in stereo VR
         run: |
           mkdir -p "$RUNNER_TEMP/ocean-preview"
-          xvfb-run -a godot --editor --audio-driver Dummy --path . res://ocean/main.tscn --import
+          xvfb-run -a godot --editor --audio-driver Dummy --path . res://game/main.tscn --import
           godot --headless --path . --script res://terrain/bake.gd
           godot --headless --editor --path . --import
           OCEAN_CAPTURE_DIR="$RUNNER_TEMP/ocean-preview" OCEAN_TEST_EYE_SIZE=320 OCEAN_STEREO="${{ matrix.stereo }}" timeout 300 xvfb-run -a godot --path . --audio-driver Dummy --rendering-method mobile --gpu-validation --fixed-fps 60 --resolution 1280x960 --script res://.github/tests/abyss_ocean.gd > "$RUNNER_TEMP/ocean-preview/check.log" 2>&1 || { cat "$RUNNER_TEMP/ocean-preview/check.log"; exit 1; }

@@ -41,7 +41,7 @@ func run() -> void:
 		root.use_xr=true
 		left=controller(&'left_hand')
 		right=controller(&'right_hand')
-	scene=load('res://ocean/main.tscn').instantiate()
+	scene=load('res://game/main.tscn').instantiate()
 	root.add_child(scene)
 	if stereo:
 		for tracker in [left, right]:

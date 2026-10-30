@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://blkvx1tyt5ol3"
+path="res://.godot/imported/fft_butterfly.glsl-554db90c79f7219f27550b221da82d5e.res"
+
+[deps]
+
+source_file="res://legacy/assets/shaders/compute/fft_butterfly.glsl"
+dest_files=["res://.godot/imported/fft_butterfly.glsl-554db90c79f7219f27550b221da82d5e.res"]
+
+[params]
+

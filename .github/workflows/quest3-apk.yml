@@ -148,7 +148,7 @@ jobs:
               files = apk.namelist()
               assert 'lib/arm64-v8a/libopenxr_loader.so' in files
               assert 'lib/arm64-v8a/libgodotopenxrmeta.so' in files
-              assert 'assets/ocean/main.gdc' in files
+              assert 'assets/game/main.gdc' in files
               assert 'assets/player/swimmer.gdc' in files
               print('Packaged terrain index:', [f for f in files if 'terrain/baked/index' in f])
               assert any(f in files for f in ['assets/terrain/baked/index.tres', 'assets/terrain/baked/index.tres.remap'])

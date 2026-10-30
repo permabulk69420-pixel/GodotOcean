@@ -26,7 +26,7 @@ func _run() -> void:
 		_check(preview_xr.get_view_count() == 2, "Preview must render both XR eyes")
 	root.msaa_3d = ProjectSettings.get_setting("rendering/anti_aliasing/quality/msaa_3d.android")
 	# Round-trip the scene to binary so startup uses exported property ordering.
-	var source: Node3D = load("res://quest/main.tscn").instantiate()
+	var source: Node3D = load("res://legacy/quest/main.tscn").instantiate()
 	_check(source.get_node("Water").wave_generator == null,
 		"Wave GPU resources must not be allocated while scene properties are restoring")
 	var packed := PackedScene.new()

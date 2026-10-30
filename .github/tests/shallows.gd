@@ -99,7 +99,7 @@ func run() -> void:
 	var different:=ShallowsSettings.new()
 	different.seed+=1
 	check(absf(ShallowsGenerator.new(different).height(24,24)-generator.height(24,24))>0.01,'Changing the seed must change geology')
-	var scene: Node3D=load('res://ocean/main.tscn').instantiate()
+	var scene: Node3D=load('res://game/main.tscn').instantiate()
 	swimmer=scene.get_node('Player')
 	scene.remove_child(swimmer)
 	scene.free()

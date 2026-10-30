@@ -34,7 +34,7 @@ func run() -> void:
 		return
 	print('EXPORTED terrain: ',terrain.chunks.size(),' instantiated chunks; seabed beneath spawn=',hit.position)
 	# Instantiate the actual exported hand scenes and compiled interaction scripts.
-	var scene=load('res://ocean/main.tscn').instantiate()
+	var scene=load('res://game/main.tscn').instantiate()
 	var player=scene.get_node('Player')
 	scene.remove_child(player)
 	scene.free()

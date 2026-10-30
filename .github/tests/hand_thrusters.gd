@@ -41,7 +41,7 @@ func run() -> void:
 		controller(i, Transform3D(Basis.IDENTITY, Vector3(-0.3 if i == 0 else 0.3, 1.2, -0.55)))
 	fixture = Node3D.new()
 	root.add_child(fixture)
-	var scene: Node3D = load('res://ocean/main.tscn').instantiate()
+	var scene: Node3D = load('res://game/main.tscn').instantiate()
 	player = scene.get_node('Player')
 	scene.remove_child(player)
 	scene.free()
