@@ -136,15 +136,6 @@ def build():
         beam('Grip end support',tuple(HANDLE_FRAME@Vector((0,direction*.055,0))),tuple(start),.0055,graphite,body,16)
         for a,b in zip(points,points[1:]): beam('Curved titanium bridge',a,b,.0055,pearl,body,16)
         for a in points[1:-1]: ellipsoid('Bridge fillet',a,(.006,.006,.007),pearl,body,16,8)
-    # A slim open saddle trails along the outside of the wrist, leaving the palm free.
-    for z in [.174,.192]:
-        points=[]
-        for i in range(13):
-            a=-1.18+i*2.36/12
-            points.append((.045*math.cos(a),.038*math.sin(a),z))
-        for a,b in zip(points,points[1:]): beam('Open wrist saddle',a,b,.0045,graphite,body,10)
-    for x in [.043,.054]:
-        beam('Wrist support spar',(x,-.024,.13),(x,-.024,.195),.005,titanium,body,12)
     for i in range(3):
         z=-.005+i*.027
         ellipsoid('Inset cooling vent',(BODY_X+.047,.013,z),(.002,.008,.008),graphite,body,16,8)
