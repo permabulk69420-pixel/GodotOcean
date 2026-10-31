@@ -6,6 +6,10 @@ signal submerged_changed(submerged: bool)
 const XR_RENDER_SCALE := 0.8
 ## The headset's refresh rate (the Quest 3 offers 72, 80, 90 and 120). Every frame then has 1000 / rate milliseconds.
 const XR_REFRESH_RATE := 90.0
+## How soon meshes that have simpler versions (the reef, the mushroom, the seagrass) drop to them: Godot's default is 1.
+const XR_LOD_THRESHOLD := 3.0
+## Underwater the fog has all but hidden anything past this, so the camera stops drawing there.
+const UNDERWATER_FAR := 150.0
 const UNDERWATER_SKY_SHADER := preload("res://world/ocean/shaders/underwater_sky.gdshader")
 
 @onready var ocean: AbyssOcean = $Ocean
@@ -31,6 +35,7 @@ var xr: XRInterface
 var xr_focused := false
 var submerged := false
 var seabed_shown := true
+var surface_far := 6000.0
 ## The watch's performance test steps this: 0 everything shown, 1 no terrain, 2 no reef, 3 no seagrass, 4 none of them.
 var seabed_test := 0
 ## The water surface. 0 (the default) draws it lit above the water and unlit below it (seen from underneath nothing the engine's
@@ -54,6 +59,7 @@ var underwater_sky: ShaderMaterial
 var look := Vector2.ZERO
 
 func _ready() -> void:
+	surface_far = camera.far
 	ocean.observer = camera
 	terrain.observer = camera
 	player.ocean = ocean
@@ -91,6 +97,7 @@ func _ready() -> void:
 		# Mobile Vulkan uses XR variable-rate shading for fixed foveated rendering.
 		get_viewport().vrs_mode = Viewport.VRS_XR
 		get_viewport().scaling_3d_scale = XR_RENDER_SCALE
+		get_viewport().mesh_lod_threshold = XR_LOD_THRESHOLD
 		# On the Mobile renderer the foveation is tuned here (foveation_level is Compatibility-only).
 		# The default strength is 1.0; higher shades more of the outer view coarsely.
 		if "vrs_strength" in xr: xr.set("vrs_strength", 2.0)
@@ -163,6 +170,7 @@ func update_water_state() -> void:
 		world.environment = underwater_environment if submerged else surface_environment
 		submerged_changed.emit(submerged)
 		apply_water_shader()
+		camera.far = UNDERWATER_FAR if submerged else surface_far
 	# The water is opaque and the seabed lies well below it, so from above nothing down there can be
 	# seen. Skip drawing it then. The thresholds differ so the head bobbing at the surface cannot
 	# flicker it, and sit above the submerge point so it is back before the head goes under.

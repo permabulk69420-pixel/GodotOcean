@@ -2,6 +2,8 @@ class_name AbyssTerrain
 extends Node3D
 const GROUND_COLOUR=preload('res://world/terrain/textures/ground_colour.jpg')
 const GROUND_NORMAL=preload('res://world/terrain/textures/ground_normal.jpg')
+## Chunks further than this from the camera are not drawn (underwater fog has all but hidden them; collision is unaffected).
+const VIEW_DISTANCE=110.0
 @export var settings: AbyssTerrainSettings
 var observer: Node3D
 var chunks: Dictionary={}
@@ -104,6 +106,7 @@ func _install(data: AbyssTerrainChunk) -> void:
 	visual.mesh=data.mesh
 	visual.material_override=material
 	visual.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	visual.visibility_range_end=VIEW_DISTANCE
 	chunk.add_child(visual)
 	var collider:=CollisionShape3D.new()
 	collider.shape=data.collision

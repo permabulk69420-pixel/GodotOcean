@@ -7,8 +7,8 @@ extends Node3D
 
 const KIT := 'res://world/reef/reef_kit.glb'
 const CELL := 32.0
-const VIEW_DISTANCE := 70.0
-const SET_PIECE_VIEW_DISTANCE := 160.0
+const VIEW_DISTANCE := 60.0
+const SET_PIECE_VIEW_DISTANCE := 120.0
 
 # kind: 'rock' uses the terrain's rock material; 'coral' uses the reef material.
 # mesh: names inside the kit; one is picked at random per piece.

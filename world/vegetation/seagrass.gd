@@ -7,7 +7,7 @@ const MODEL := preload('res://world/vegetation/seagrass.glb')
 const SHADER := preload('res://world/vegetation/seagrass.gdshader')
 
 @export var cell_size := 32.0
-@export var view_distance := 55.0
+@export var view_distance := 48.0
 @export var attempts := 12000
 ## Fraction of attempts kept inside a dense patch (patches come from low-frequency noise).
 @export var patch_density := 0.55
