@@ -13,7 +13,7 @@ on:
         default: false
 
 concurrency:
-  group: abyss-ocean-apk
+  group: abyss-ocean-apk-${{ github.ref_name }}
   cancel-in-progress: true
 
 permissions:
@@ -24,7 +24,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      GODOT_VERSION: '4.6.3'
+      GODOT_VERSION: '4.7.2'
       FULL_TESTS: ${{ inputs.full_tests }}
     steps:
       - uses: actions/checkout@v4
@@ -38,17 +38,8 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: actions/cache@v4
-        id: signing-key
-        with:
-          path: ${{ runner.temp }}/debug.keystore
-          key: abyss-ocean-signing-v1
-
-      - name: Require this app's existing signing key
-        if: steps.signing-key.outputs.cache-hit != 'true'
-        run: |
-          echo '::error::The Abyss Ocean signing key is missing; refusing to publish an incompatible update.'
-          exit 1
+      # This test installs alongside the 4.6 app with its own package ID and debug key.
+      # Never reuse the production signing key on an experimental engine upgrade.
 
       - name: Install Android and Vulkan build tools
         run: |
@@ -62,7 +53,7 @@ jobs:
 
       - name: Install verified Godot and Android template
         run: |
-          mkdir -p "$RUNNER_TEMP/godot" "$HOME/.local/share/godot/export_templates/4.6.3.stable"
+          mkdir -p "$RUNNER_TEMP/godot" "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
           cd "$RUNNER_TEMP/godot"
           base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
           curl --fail --location --silent --show-error "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o godot.zip
@@ -75,9 +66,9 @@ jobs:
           chmod +x "Godot_v${GODOT_VERSION}-stable_linux.x86_64"
           ln -s "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64" "$RUNNER_TEMP/godot/godot"
           echo "$RUNNER_TEMP/godot" >> "$GITHUB_PATH"
-          unzip -j -q "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" templates/android_source.zip -d "$HOME/.local/share/godot/export_templates/4.6.3.stable"
+          unzip -j -q "Godot_v${GODOT_VERSION}-stable_export_templates.tpz" templates/android_source.zip -d "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
           mkdir -p "$GITHUB_WORKSPACE/android/build"
-          unzip -q "$HOME/.local/share/godot/export_templates/4.6.3.stable/android_source.zip" -d "$GITHUB_WORKSPACE/android/build"
+          unzip -q "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/android_source.zip" -d "$GITHUB_WORKSPACE/android/build"
 
       - name: Configure Android export
         run: |
@@ -85,7 +76,7 @@ jobs:
           if [ ! -f "$RUNNER_TEMP/debug.keystore" ]; then
             keytool -genkeypair -keystore "$RUNNER_TEMP/debug.keystore" -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Android Debug,O=Android,C=US'
           fi
-          cat > "$HOME/.config/godot/editor_settings-4.6.tres" <<EOF
+          cat > "$HOME/.config/godot/editor_settings-4.7.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
           [resource]
           export/android/java_sdk_path = "$JAVA_HOME"
@@ -142,12 +133,12 @@ jobs:
           cat "$RUNNER_TEMP/smoke.log"
           if grep -E 'SCRIPT ERROR|SHADER ERROR|ERROR:' "$RUNNER_TEMP/smoke.log"; then exit 1; fi
           fi
-          godot --headless --path . --export-debug 'Meta Quest' artifacts/AbyssOcean-Quest3.apk
+          godot --headless --path . --export-debug 'Meta Quest' artifacts/AbyssOcean-Godot472-Quest3.apk
           python3 - <<'PYAPK'
           from pathlib import Path
           import os, zipfile
           target=Path(os.environ['RUNNER_TEMP'])/'exported-runtime'
-          with zipfile.ZipFile('artifacts/AbyssOcean-Quest3.apk') as apk:
+          with zipfile.ZipFile('artifacts/AbyssOcean-Godot472-Quest3.apk') as apk:
               for name in apk.namelist():
                   if name.startswith('assets/') and not name.endswith('/'):
                       path=target/name[7:]
@@ -173,8 +164,8 @@ jobs:
           cat "$RUNNER_TEMP/exported-stereo.log"
           if grep -E 'SCRIPT ERROR|ERROR:|Validation Error|VUID-|SYNC-HAZARD' "$RUNNER_TEMP/exported-stereo.log"; then exit 1; fi
           fi
-          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs artifacts/AbyssOcean-Quest3.apk | tee "$RUNNER_TEMP/signing.txt"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree artifacts/AbyssOcean-Quest3.apk AndroidManifest.xml > "$RUNNER_TEMP/manifest.txt"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs artifacts/AbyssOcean-Godot472-Quest3.apk | tee "$RUNNER_TEMP/signing.txt"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump xmltree artifacts/AbyssOcean-Godot472-Quest3.apk AndroidManifest.xml > "$RUNNER_TEMP/manifest.txt"
           python3 - <<'PY'
           from pathlib import Path
           import re, zipfile
@@ -182,7 +173,7 @@ jobs:
           assert re.search(r'com\.oculus\.supportedDevices[^\n]*\n[^\n]*="quest3"', manifest)
           assert 'org.abyss.ocean.quest3' in manifest
           assert 'org.khronos.openxr.intent.category.IMMERSIVE_HMD' in manifest
-          with zipfile.ZipFile('artifacts/AbyssOcean-Quest3.apk') as apk:
+          with zipfile.ZipFile('artifacts/AbyssOcean-Godot472-Quest3.apk') as apk:
               files = apk.namelist()
               assert 'lib/arm64-v8a/libopenxr_loader.so' in files
               assert 'lib/arm64-v8a/libgodotopenxrmeta.so' in files
@@ -194,22 +185,17 @@ jobs:
               assert not any('/imgui-godot/' in f for f in files)
           PY
 
-      - name: Replace the current APK download
+      - name: Publish separate Godot 4.7.2 test APK
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
-          tag=abyss-current
+          # Keep the production abyss-current release completely untouched.
+          tag=abyss-godot-472-test
           if gh release view "$tag" > /dev/null 2>&1; then
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$SOURCE_SHA" -F force=true
-            gh release upload "$tag" artifacts/AbyssOcean-Quest3.apk --clobber
-            gh release edit "$tag" --title 'Abyss Ocean — Quest 3' --notes "Built from $SOURCE_SHA. Physical Quest 3 verification is still required." --latest
+            gh release upload "$tag" artifacts/AbyssOcean-Godot472-Quest3.apk --clobber
+            gh release edit "$tag" --title 'Abyss Ocean — Godot 4.7.2 test' --notes "Built from $SOURCE_SHA. Separate application from the 4.6.3 baseline; test performance on the Quest 3." --prerelease
           else
-            gh release create "$tag" artifacts/AbyssOcean-Quest3.apk --target "$SOURCE_SHA" --title 'Abyss Ocean — Quest 3' --notes "Built from $SOURCE_SHA. Physical Quest 3 verification is still required." --latest
+            gh release create "$tag" artifacts/AbyssOcean-Godot472-Quest3.apk --target "$SOURCE_SHA" --title 'Abyss Ocean — Godot 4.7.2 test' --notes "Built from $SOURCE_SHA. Separate application from the 4.6.3 baseline; test performance on the Quest 3." --prerelease
           fi
-          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" --jq '.assets[] | select(.name != "AbyssOcean-Quest3.apk") | .id' | while read -r asset_id; do
-            gh api --method DELETE "repos/$GITHUB_REPOSITORY/releases/assets/$asset_id"
-          done
-          gh api "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select((.tag_name | startswith("quest3-")) or (.tag_name | startswith("abyss-"))) | select(.tag_name != "abyss-current") | .tag_name' | while read -r old_tag; do
-            gh release delete "$old_tag" --yes
-          done
