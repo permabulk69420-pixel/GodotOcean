@@ -4,6 +4,8 @@ signal submerged_changed(submerged: bool)
 
 ## Render scale for the headset: the Quest's default is more pixels than this scene's shaders can fill at 72 Hz.
 const XR_RENDER_SCALE := 0.8
+## The headset's refresh rate (the Quest 3 offers 72, 80, 90 and 120). Every frame then has 1000 / rate milliseconds.
+const XR_REFRESH_RATE := 90.0
 const UNDERWATER_SKY_SHADER := preload("res://world/ocean/shaders/underwater_sky.gdshader")
 
 @onready var ocean: AbyssOcean = $Ocean
@@ -86,7 +88,8 @@ func _ready() -> void:
 		if "vrs_strength" in xr: xr.set("vrs_strength", 2.0)
 		if xr.has_method("get_available_display_refresh_rates"):
 			var rates = xr.get_available_display_refresh_rates()
-			if rates.has(72.0): xr.set_display_refresh_rate(72.0)
+			if rates.has(XR_REFRESH_RATE): xr.set_display_refresh_rate(XR_REFRESH_RATE)
+			elif rates.has(72.0): xr.set_display_refresh_rate(72.0)
 		connect_xr_lifecycle(xr)
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	elif OS.has_feature("android"):

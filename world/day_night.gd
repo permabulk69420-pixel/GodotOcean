@@ -3,10 +3,11 @@ extends Node
 ## One time-of-day value drives the sun, moon, sky, ambient light, fog and water brightness.
 ## The night is deliberately long and dark; bioluminescence is meant to carry the scene.
 
-## Real seconds for one full day and night.
-@export var day_length := 180.0
-## 0 is sunrise-ish, 0.25 noon, 0.5 sunset-ish, 0.75 midnight.
-@export_range(0.0, 1.0) var start_time := 0.34
+## Real seconds for one full day and night. At 637 the game starts in the morning (start_time) with three minutes of
+## full daylight, then about half a minute of dusk, then a long night.
+@export var day_length := 637.0
+## 0 is sunrise-ish, 0.25 noon, 0.5 sunset-ish, 0.75 midnight. 0.11 is the morning, once the day is fully bright.
+@export_range(0.0, 1.0) var start_time := 0.11
 ## Higher values shorten the day (0.45 gives roughly 35% day, 65% night).
 @export_range(0.0, 0.8) var night_bias := 0.45
 @export var sun_azimuth_degrees := 155.0
