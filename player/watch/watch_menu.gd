@@ -7,7 +7,7 @@ extends Node3D
 const FRAME := preload('res://player/watch/menu_frame.glb')
 const PIXELS := Vector2i(960, 616)
 const INNER := Vector2(0.668, 0.428)  # the plate inside the frame, in the model's own metres
-const FRAME_SCALE := 0.85
+const FRAME_SCALE := 0.95
 const DISTANCE := 0.85                # metres in front of the head
 const DROP := 0.1                     # and a little below it
 const FACE_Z := 0.004                 # the page sits this far (model metres) in front of the plate
@@ -15,7 +15,7 @@ const BACKGROUND := Color(0.043, 0.063, 0.078)
 const ACCENT := Color('5fd0c0')
 const TEXT := Color('e9eef0')
 const TEXT_DIM := Color('7f9298')
-const FONT := 26
+const FONT := 23
 
 var is_open := false
 var viewport: SubViewport
