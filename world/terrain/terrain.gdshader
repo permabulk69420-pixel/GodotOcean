@@ -4,7 +4,6 @@ shader_type spatial;
 // GPU time on the Quest; Vulkan validation shows no new errors without it.
 render_mode world_vertex_coords;
 #include "res://world/ocean/shaders/underwater_light.gdshaderinc"
-uniform sampler2D grain : repeat_enable, filter_linear_mipmap_anisotropic;
 // Equipment shares this draw layout so Mobile never switches incompatible
 // specialized shader layouts between terrain, skinned palms and held tools.
 uniform int surface_kind = 0;
@@ -15,29 +14,18 @@ uniform vec2 uv_scale = vec2(1.0);
 uniform float normal_strength = 0.0;
 uniform float roughness = 0.4;
 uniform float metalness = 0.0;
-// Terrain materials (Poly Haven, CC0). Sand is sampled from above only; rock is triplanar.
-uniform sampler2D sand_colour : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
-uniform sampler2D sand_normal : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
-uniform sampler2D rock_colour : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
-uniform sampler2D rock_normal : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
-// Sand is Poly Haven's rippled beach (aerial_beach_01, a 30 m scan) shrunk so the ripples are a
-// hand's width apart, like the small ripples waves leave on a sandy seabed. Rock is rock_boulder_dry.
-uniform float sand_tile_size = 5.5;
-uniform float rock_tile_size = 3.0;
+// The ground is one Poly Haven texture (aerial_beach_01, CC0, 4K): just its colour and normal maps, spread over a large
+// area. Level ground is projected from above; steep faces and rock use the side projection that faces them.
+uniform sampler2D ground_colour : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
+uniform sampler2D ground_normal : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
+// Metres of seabed covered by one repeat of the texture (the source scan is 30 m wide).
+uniform float ground_tile_size = 20.0;
+uniform float ground_normal_strength = 1.0;
 uniform vec3 sand_tint = vec3(1.55, 1.5, 1.38);
-uniform vec3 rock_tint = vec3(0.92, 0.95, 0.9);
+// Rocks and steep faces carry no sand: the same texture, darker and greyer.
+uniform vec3 rock_tint = vec3(0.55, 0.58, 0.56);
 // Baked sun occlusion darkens the surface only while the sun is up (1 = day, 0 = night).
 uniform float sun_shadow_strength = 1.0;
-uniform float sand_normal_strength = 1.0;
-// Rubbly, stony ground around reef pieces so they sit in the seabed instead of on clean sand.
-// reef.gd paints where the pieces are into reef_mask (1 next to a piece, 0 in open sand).
-uniform sampler2D reef_mask : hint_default_black, filter_linear;
-uniform vec4 reef_mask_rect = vec4(-80.0, -80.0, 160.0, 160.0);
-uniform float rubble_tile_size = 0.9;
-uniform vec3 rubble_tint = vec3(1.0, 0.98, 0.9);
-// How much of the ground the rubble covers right next to a piece (0..1).
-uniform float rubble_cover = 0.85;
-uniform float rock_normal_strength = 1.0;
 uniform vec3 emitted : source_color = vec3(0.0);
 
 // Decodes a tangent-space normal; works for both RG-compressed and RGB maps.
@@ -85,78 +73,49 @@ void fragment() {
   EMISSION = emitted;
  } else {
  vec3 n = normalize(world_normal);
- float sand_amount = COLOR.r;
- // Gradients come from outside the branches so every fetch has valid mip selection.
- vec2 sand_uv = world_position.xz / sand_tile_size;
- vec2 sand_dx = dFdx(sand_uv), sand_dy = dFdy(sand_uv);
- vec3 blend = pow(abs(n), vec3(4.0));
- blend /= max(dot(blend, vec3(1.0)), 0.001);
- vec3 axis_sign = vec3(n.x < 0.0 ? -1.0 : 1.0, n.y < 0.0 ? -1.0 : 1.0, n.z < 0.0 ? -1.0 : 1.0);
- vec2 rock_x = vec2(world_position.z * axis_sign.x, world_position.y) / rock_tile_size;
- vec2 rock_y = vec2(world_position.x * axis_sign.y, world_position.z) / rock_tile_size;
- vec2 rock_z = vec2(-world_position.x * axis_sign.z, world_position.y) / rock_tile_size;
- vec2 rx_dx = dFdx(rock_x), rx_dy = dFdy(rock_x);
- vec2 ry_dx = dFdx(rock_y), ry_dy = dFdy(rock_y);
- vec2 rz_dx = dFdx(rock_z), rz_dy = dFdy(rock_z);
+ // 1 on level ground, 0 on rock and steep faces (baked into the vertex colour).
+ float flat_amount = COLOR.r;
+ vec3 axis_sign = vec3(n.x < 0.0 ? -1.0 : 1.0, 1.0, n.z < 0.0 ? -1.0 : 1.0);
+ bool along_x = abs(n.x) > abs(n.z);
+ // Texture coordinates and their gradients are worked out up here, outside the branches, so every lookup below has
+ // a valid mip level. The gradients ignore the mirroring so they cannot jump where the facing flips.
+ vec2 top_uv = world_position.xz / ground_tile_size;
+ vec2 top_dx = dFdx(top_uv), top_dy = dFdy(top_uv);
+ vec2 side_raw = (along_x ? vec2(world_position.z, world_position.y) : vec2(world_position.x, world_position.y)) / ground_tile_size;
+ vec2 side_dx = dFdx(side_raw), side_dy = dFdy(side_raw);
+ vec2 side_uv = along_x ? vec2(side_raw.x * axis_sign.x, side_raw.y) : vec2(-side_raw.x * axis_sign.z, side_raw.y);
 
- // Slow tint drift hides the texture repeat on open seabed.
- float drift = mix(0.86, 1.14, texture(grain, world_position.xz * 0.012).r);
- float near_reef = texture(reef_mask, (world_position.xz - reef_mask_rect.xy) / reef_mask_rect.zw).r;
- float rubble_edge = texture(grain, world_position.xz * 0.4).r - 0.5;
- vec2 rubble_uv = world_position.xz / rubble_tile_size;
- vec2 rubble_dx = dFdx(rubble_uv), rubble_dy = dFdy(rubble_uv);
-
- vec3 sand = vec3(0.0);
- vec3 sand_n = n;
- if (sand_amount > 0.002) {
-  sand = textureGrad(sand_colour, sand_uv, sand_dx, sand_dy).rgb * sand_tint * drift;
-  vec3 t = unpack_normal(textureGrad(sand_normal, sand_uv, sand_dx, sand_dy), sand_normal_strength);
-  // Whiteout blend onto the world normal; sand is projected from above.
+ vec3 top_colour = vec3(0.0);
+ vec3 top_n = n;
+ if (flat_amount > 0.002) {
+  top_colour = textureGrad(ground_colour, top_uv, top_dx, top_dy).rgb;
+  vec3 t = unpack_normal(textureGrad(ground_normal, top_uv, top_dx, top_dy), ground_normal_strength);
+  // Whiteout blend onto the world normal; level ground is projected from above.
   t = vec3(t.xy + n.xz, abs(t.z) * n.y);
-  sand_n = normalize(t.xzy);
-  // Stony rubble around reef pieces: the rock texture at pebble scale, with a ragged edge.
-  float rubble = smoothstep(0.12, 0.8, near_reef + rubble_edge * 0.5);
-  if (rubble > 0.004) {
-   vec3 stones = textureGrad(rock_colour, rubble_uv, rubble_dx, rubble_dy).rgb * rubble_tint * drift;
-   vec3 bumps = unpack_normal(textureGrad(rock_normal, rubble_uv, rubble_dx, rubble_dy), 1.3);
-   bumps = vec3(bumps.xy + n.xz, abs(bumps.z) * n.y);
-   sand = mix(sand, stones, rubble * rubble_cover);
-   sand_n = normalize(mix(sand_n, normalize(bumps.xzy), rubble));
+  top_n = normalize(t.xzy);
+ }
+ vec3 side_colour = vec3(0.0);
+ vec3 side_n = n;
+ if (flat_amount < 0.998) {
+  side_colour = textureGrad(ground_colour, side_uv, side_dx, side_dy).rgb;
+  vec3 t = unpack_normal(textureGrad(ground_normal, side_uv, side_dx, side_dy), ground_normal_strength);
+  if (along_x) {
+   t.x *= axis_sign.x;
+   t = vec3(t.xy + n.zy, abs(t.z) * n.x);
+   side_n = normalize(t.zyx);
+  } else {
+   t.x *= -axis_sign.z;
+   t = vec3(t.xy + n.xy, abs(t.z) * n.z);
+   side_n = normalize(t.xyz);
   }
  }
- vec3 rock = vec3(0.0);
- vec3 rock_n = n;
- if (sand_amount < 0.998) {
-  vec3 tx = vec3(0.0), ty = vec3(0.0), tz = vec3(0.0);
-  if (blend.x > 0.02) {
-   rock += blend.x * textureGrad(rock_colour, rock_x, rx_dx, rx_dy).rgb;
-   tx = unpack_normal(textureGrad(rock_normal, rock_x, rx_dx, rx_dy), rock_normal_strength);
-  } else { tx = vec3(0.0, 0.0, 1.0); }
-  if (blend.y > 0.02) {
-   rock += blend.y * textureGrad(rock_colour, rock_y, ry_dx, ry_dy).rgb;
-   ty = unpack_normal(textureGrad(rock_normal, rock_y, ry_dx, ry_dy), rock_normal_strength);
-  } else { ty = vec3(0.0, 0.0, 1.0); }
-  if (blend.z > 0.02) {
-   rock += blend.z * textureGrad(rock_colour, rock_z, rz_dx, rz_dy).rgb;
-   tz = unpack_normal(textureGrad(rock_normal, rock_z, rz_dx, rz_dy), rock_normal_strength);
-  } else { tz = vec3(0.0, 0.0, 1.0); }
-  rock *= rock_tint * drift;
-  tx.x *= axis_sign.x;
-  ty.x *= axis_sign.y;
-  tz.x *= -axis_sign.z;
-  tx = vec3(tx.xy + n.zy, abs(tx.z) * n.x);
-  ty = vec3(ty.xy + n.xz, abs(ty.z) * n.y);
-  tz = vec3(tz.xy + n.xy, abs(tz.z) * n.z);
-  rock_n = normalize(tx.zyx * blend.x + ty.xzy * blend.y + tz.xyz * blend.z);
- }
- float ripples = sin(world_position.x * 7.0 + sin(world_position.z * 0.9) * 1.2);
- ALBEDO = mix(rock, sand, sand_amount) * (0.97 + 0.03 * ripples * sand_amount) * mix(1.0, mix(0.25, 1.0, sunlight), sun_shadow_strength);
- vec3 shaded_normal = normalize(mix(rock_n, sand_n, sand_amount));
+ vec3 albedo = mix(side_colour * rock_tint, top_colour * sand_tint, flat_amount);
+ ALBEDO = albedo * mix(1.0, mix(0.25, 1.0, sunlight), sun_shadow_strength);
+ vec3 shaded_normal = normalize(mix(side_n, top_n, flat_amount));
  NORMAL = normalize((VIEW_MATRIX * vec4(shaded_normal, 0.0)).xyz);
- ROUGHNESS = mix(0.82, 0.94, sand_amount);
+ ROUGHNESS = mix(0.82, 0.94, flat_amount);
  SPECULAR = 0.16;
- // Ground right against a reef piece is a little shaded by it.
- AO = COLOR.b * (1.0 - 0.3 * smoothstep(0.55, 1.0, near_reef) * sand_amount);
+ AO = COLOR.b;
  AO_LIGHT_AFFECT = 0.0;
  // No caustics where the baked sun visibility says the seabed is in shade.
  caustic = mix(1.0, caustic, sunlight);

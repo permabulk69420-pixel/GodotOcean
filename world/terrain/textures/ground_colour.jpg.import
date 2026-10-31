@@ -2,9 +2,9 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ck0bvwew5caur"
-path.s3tc="res://.godot/imported/rock_normal.jpg-b01b7da65b96c4d7a15ac8999b1236c1.s3tc.ctex"
-path.etc2="res://.godot/imported/rock_normal.jpg-b01b7da65b96c4d7a15ac8999b1236c1.etc2.ctex"
+uid="uid://b7k173jrl05j"
+path.s3tc="res://.godot/imported/ground_colour.jpg-a3bc2a30fce5c2b1ed245fdce6e339c2.s3tc.ctex"
+path.etc2="res://.godot/imported/ground_colour.jpg-a3bc2a30fce5c2b1ed245fdce6e339c2.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -12,8 +12,8 @@ metadata={
 
 [deps]
 
-source_file="res://world/terrain/textures/rock_normal.jpg"
-dest_files=["res://.godot/imported/rock_normal.jpg-b01b7da65b96c4d7a15ac8999b1236c1.s3tc.ctex", "res://.godot/imported/rock_normal.jpg-b01b7da65b96c4d7a15ac8999b1236c1.etc2.ctex"]
+source_file="res://world/terrain/textures/ground_colour.jpg"
+dest_files=["res://.godot/imported/ground_colour.jpg-a3bc2a30fce5c2b1ed245fdce6e339c2.s3tc.ctex", "res://.godot/imported/ground_colour.jpg-a3bc2a30fce5c2b1ed245fdce6e339c2.etc2.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
-compress/normal_map=1
+compress/normal_map=2
 compress/channel_pack=0
 mipmaps/generate=true
 mipmaps/limit=-1
