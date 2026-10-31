@@ -33,8 +33,9 @@ var submerged := false
 var seabed_shown := true
 ## The watch's performance test steps this: 0 everything shown, 1 no terrain, 2 no reef, 3 no seagrass, 4 none of them.
 var seabed_test := 0
-## The watch's performance test for the water surface: 0 as it is, 1 drawn unlit (no engine lighting, reflections or
-## ambient), 2 the same mesh with a one-line shader (what the shape alone costs), 3 hidden.
+## The water surface. 0 (the default) draws it lit above the water and unlit below it (seen from underneath nothing the engine's
+## lighting adds shows, so it is skipped); 1 lit always (what it used to be); 2 the same mesh with a one-line shader (what the
+## shape alone costs); 3 hidden. The last three are for the watch's performance test.
 var water_test := 0
 var water_shader: Shader
 var water_unlit_shader: Shader
@@ -80,6 +81,7 @@ func _ready() -> void:
 	underwater_environment.fog_sky_affect = 1.0
 	underwater_environment.ambient_light_color = Color(0.06, 0.32, 0.40)
 	underwater_environment.ambient_light_energy = 0.38
+	build_water_shaders()
 	day_night.evaluate()
 	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, terrain.material, 1.0, 0.0, underwater_sky)
 	xr = XRServer.primary_interface
@@ -160,6 +162,7 @@ func update_water_state() -> void:
 		submerged = next
 		world.environment = underwater_environment if submerged else surface_environment
 		submerged_changed.emit(submerged)
+		apply_water_shader()
 	# The water is opaque and the seabed lies well below it, so from above nothing down there can be
 	# seen. Skip drawing it then. The thresholds differ so the head bobbing at the surface cannot
 	# flicker it, and sit above the submerge point so it is back before the head goes under.
@@ -173,20 +176,42 @@ func update_water_state() -> void:
 	var energy := day_night.light_energy() * (exp(-maxf(depth, 0.0) * 0.02) if submerged else 1.0)
 	if not is_equal_approx(sun.light_energy,energy): sun.light_energy=energy
 
+## Builds the unlit underwater version and the shape-only test version from the water shader's own code.
+func build_water_shaders() -> void:
+	water_shader = ocean.material.shader
+	var code := water_shader.code
+	var light_start := code.find("// Godot's Mobile renderer runs its built-in light maths")
+	water_shape_shader = Shader.new()
+	water_shape_shader.code = code.substr(0, code.find("void fragment() {")) + "void fragment() { ALBEDO = vec3(0.0); EMISSION = vec3(0.02, 0.10, 0.12); ROUGHNESS = 1.0; }\n"
+	# Unlit: the shader already works out the whole colour as emission, so draw that and nothing else.
+	water_unlit_shader = Shader.new()
+	water_unlit_shader.code = code.substr(0, light_start) \
+		.replace("render_mode world_vertex_coords, cull_disabled, depth_draw_opaque;", "render_mode world_vertex_coords, cull_disabled, depth_draw_opaque, unshaded;") \
+		.replace("	METALLIC = 0.0;\n}", "	METALLIC = 0.0;\n	ALBEDO = EMISSION;\n	EMISSION = vec3(0.0);\n}")
+	# Draw the unlit version once, a speck in front of the camera, so the engine builds it now and not on the first dive.
+	var warm := MeshInstance3D.new()
+	warm.mesh = ocean.surface.mesh
+	warm.custom_aabb = ocean.surface.custom_aabb
+	warm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var warm_material := ShaderMaterial.new()
+	warm_material.shader = water_unlit_shader
+	warm.material_override = warm_material
+	camera.add_child(warm)
+	warm.position = Vector3(0.0, 0.0, -1.0)
+	warm.scale = Vector3.ONE * 0.000001
+	get_tree().create_timer(1.0).timeout.connect(warm.queue_free)
+
+## Picks the water's shader and visibility for the current state.
+func apply_water_shader() -> void:
+	ocean.surface.visible = water_test != 3
+	var shader := water_shader
+	if water_test == 0 and submerged: shader = water_unlit_shader
+	elif water_test == 2: shader = water_shape_shader
+	if ocean.material.shader != shader: ocean.material.shader = shader
+
 func set_water_test(mode: int) -> void:
-	if water_shader == null:
-		water_shader = ocean.material.shader
-		var code := water_shader.code
-		var light_start := code.find("// Godot's Mobile renderer runs its built-in light maths")
-		water_shape_shader = Shader.new()
-		water_shape_shader.code = code.substr(0, code.find("void fragment() {")) + "void fragment() { ALBEDO = vec3(0.0); EMISSION = vec3(0.02, 0.10, 0.12); ROUGHNESS = 1.0; }\n"
-		water_unlit_shader = Shader.new()
-		water_unlit_shader.code = code.substr(0, light_start) \
-			.replace("render_mode world_vertex_coords, cull_disabled, depth_draw_opaque;", "render_mode world_vertex_coords, cull_disabled, depth_draw_opaque, unshaded;") \
-			.replace("	METALLIC = 0.0;\n}", "	METALLIC = 0.0;\n	ALBEDO = EMISSION;\n	EMISSION = vec3(0.0);\n}")
 	water_test = mode
-	ocean.surface.visible = mode != 3
-	ocean.material.shader = [water_shader, water_unlit_shader, water_shape_shader, water_shader][mode]
+	apply_water_shader()
 
 func set_seabed_test(mode: int) -> void:
 	seabed_test = mode
