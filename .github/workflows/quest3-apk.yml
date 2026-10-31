@@ -198,20 +198,20 @@ jobs:
           gh release upload abyss-current artifacts/AbyssOcean-Godot472-Quest3.apk --clobber
           gh release view abyss-current --json assets --jq '.assets[].name'
 
-  copy_terrain_test_apk:
+  copy_opengl_test_apk:
     if: ${{ contains(github.event.head_commit.message, '[copy-only]') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
-      - name: Copy the already built terrain-distance APK into the existing Abyss Ocean release
+      - name: Copy Opus's already built OpenGL APK into the existing Abyss Ocean release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          source_tag=abyss-test-ccr-terrain-distance-test
+          source_tag=abyss-test-ccr-f169f256-0p7v1d-opengl
           target_tag=abyss-current
           for attempt in $(seq 1 30); do
             if gh release download "$source_tag" --pattern 'AbyssOcean-Godot472-Quest3.apk' --dir artifacts; then break; fi
@@ -219,9 +219,9 @@ jobs:
             sleep 20
           done
           test -s artifacts/AbyssOcean-Godot472-Quest3.apk
-          mv artifacts/AbyssOcean-Godot472-Quest3.apk artifacts/AbyssOcean-TerrainDistance-Quest3.apk
-          sha256sum artifacts/AbyssOcean-TerrainDistance-Quest3.apk
+          mv artifacts/AbyssOcean-Godot472-Quest3.apk artifacts/AbyssOcean-OpenGL-Quest3.apk
+          sha256sum artifacts/AbyssOcean-OpenGL-Quest3.apk
           gh release view "$target_tag" >/dev/null
-          gh release upload "$target_tag" artifacts/AbyssOcean-TerrainDistance-Quest3.apk
+          gh release upload "$target_tag" artifacts/AbyssOcean-OpenGL-Quest3.apk
           gh release view "$target_tag" --json assets --jq '.assets[].name' | tee /tmp/release-assets.txt
-          grep -Fx 'AbyssOcean-TerrainDistance-Quest3.apk' /tmp/release-assets.txt
+          grep -Fx 'AbyssOcean-OpenGL-Quest3.apk' /tmp/release-assets.txt
