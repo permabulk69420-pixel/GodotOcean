@@ -90,8 +90,10 @@ func _ready() -> void:
 			var rates = xr.get_available_display_refresh_rates()
 			if rates.has(XR_REFRESH_RATE): xr.set_display_refresh_rate(XR_REFRESH_RATE)
 			elif rates.has(72.0): xr.set_display_refresh_rate(72.0)
-		# Unless the game asks, the headset runs its GPU at a middle speed. Ask for the high, thermally sustainable one.
-		if xr.has_method("set_gpu_level"): xr.set_gpu_level(OpenXRInterface.PERF_SETTINGS_LEVEL_SUSTAINED_HIGH)
+		# Unless the game asks, the headset runs its GPU at a middle speed. Boost lets it go beyond what it can sustain
+		# thermally; the headset slows itself down again if it gets too hot. If it throttles after a few minutes, use
+		# PERF_SETTINGS_LEVEL_SUSTAINED_HIGH instead.
+		if xr.has_method("set_gpu_level"): xr.set_gpu_level(OpenXRInterface.PERF_SETTINGS_LEVEL_BOOST)
 		connect_xr_lifecycle(xr)
 		DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
 	elif OS.has_feature("android"):
