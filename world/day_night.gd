@@ -3,14 +3,12 @@ extends Node
 ## One time-of-day value drives the sun, moon, sky, ambient light, fog and water brightness.
 ## The night is deliberately long and dark; bioluminescence is meant to carry the scene.
 
-## Real seconds for one full day and night. At 417 the game starts as the morning turns fully bright and gives three
-## minutes of full daylight, about half a minute of dusk, three minutes of full night and half a minute of dawn.
-@export var day_length := 417.0
-## 0 is sunrise-ish, 0.25 noon, 0.5 sunset-ish, 0.75 midnight. 0.0343 is the first moment of full daylight.
-@export_range(0.0, 1.0) var start_time := 0.0343
-## Higher values shorten the day. -0.138 makes full day and full night exactly as long as each other (the dusk and dawn
-## glow keep the sky from going dark the moment the sun sets, so 0 would give a slightly shorter night).
-@export_range(-0.3, 0.8) var night_bias := -0.138
+## Real seconds for one full day and night.
+@export var day_length := 180.0
+## 0 is sunrise-ish, 0.25 noon, 0.5 sunset-ish, 0.75 midnight.
+@export_range(0.0, 1.0) var start_time := 0.34
+## Higher values shorten the day (0.45 gives roughly 35% day, 65% night).
+@export_range(0.0, 0.8) var night_bias := 0.45
 @export var sun_azimuth_degrees := 155.0
 @export var max_sun_elevation_degrees := 55.0
 ## Sky-light changes force Godot to refilter the sky radiance, so they step instead of running every frame.

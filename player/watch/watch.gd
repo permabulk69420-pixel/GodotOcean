@@ -18,8 +18,6 @@ const POKE_CLEAR := 0.04    # metres above the glass that re-arms it
 const POKE_AWAY := 0.06     # or this far across
 const OPEN_HAND := 0.3      # a hand squeezing or pulling a trigger is not tapping anything
 const DEFAULT_RATE := 72.0
-const SCALES := [1.0, 0.9, 0.8, 0.7]  # render scales the A button steps through
-const FILTERS := [4, 2, 0]  # anisotropic levels the left stick click steps through: 16x, 4x, off
 
 var diagnostics := AbyssDiagnostics.new()
 var menu: AbyssWatchMenu
@@ -34,7 +32,6 @@ var detail: Label
 var index_bones: Array[int] = []
 var armed := true
 var key_was := false
-var test_was := [false, false, false, false, false, false]
 var since_refresh := 0.0
 
 func _ready() -> void:
@@ -123,46 +120,11 @@ func target_rate() -> float:
 func toggle_menu() -> void:
 	if menu.is_open:
 		menu.close()
-		# The water and seabed tests are only for reading the numbers; put them back when the panel goes away.
-		if get_parent().get('ocean') != null:
-			get_parent().set_water_test(0)
-			get_parent().set_seabed_test(0)
-			get_parent().set_terrain_transparent_test(false)
-			get_parent().freeze_time = false
 	else:
 		menu.open(head.global_transform)
-		if get_parent().get('ocean') != null: get_parent().freeze_time = true
 		refresh()
 	# GPU and CPU render times are only measured while the panel is up.
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), menu.is_open)
-
-## The performance tests, run from the panel while it is open: 0 render scale (A), 1 anti-aliasing (B), 2 water
-## surface (X), 3 seabed (Y: terrain, reef and seagrass one at a time), 4 texture filtering (left stick click), 5 whether the
-## terrain is drawn the old transparent way (right stick click). Render scale and anti-aliasing stay as set; the water and seabed
-## tests undo themselves on close, and the time of day is frozen while the panel is up.
-func press_test(index: int) -> void:
-	var game := get_parent()
-	var viewport := get_viewport()
-	match index:
-		0:
-			var nearest := 0
-			for i in range(SCALES.size()):
-				if absf(SCALES[i] - viewport.scaling_3d_scale) < absf(SCALES[nearest] - viewport.scaling_3d_scale): nearest = i
-			viewport.scaling_3d_scale = SCALES[(nearest + 1) % SCALES.size()]
-		1:
-			viewport.msaa_3d = ((viewport.msaa_3d + 1) % 3) as Viewport.MSAA
-		2:
-			if game.get('ocean') != null: game.set_water_test((game.water_test + 1) % 4)
-		3:
-			if game.get('ocean') != null: game.set_seabed_test((game.seabed_test + 1) % 5)
-		4:
-			var nearest_filter := 0
-			for i in range(FILTERS.size()):
-				if absi(FILTERS[i] - viewport.anisotropic_filtering_level) < absi(FILTERS[nearest_filter] - viewport.anisotropic_filtering_level): nearest_filter = i
-			viewport.anisotropic_filtering_level = FILTERS[(nearest_filter + 1) % FILTERS.size()] as Viewport.AnisotropicFiltering
-		5:
-			if game.get('ocean') != null: game.set_terrain_transparent_test(not game.terrain_transparent_test)
-	show_panel_values()
 
 func show_panel_values() -> void:
 	menu.show_values(diagnostics.values(get_viewport(), get_parent(), target_rate()))
@@ -189,17 +151,3 @@ func _process(delta: float) -> void:
 		var free_hand := right.controller.get_float(&'grip') < OPEN_HAND and right.controller.get_float(&'trigger') < OPEN_HAND and not right.holding
 		asked = asked or free_hand or menu.is_open
 	if asked: toggle_menu()
-	if menu.is_open: _read_test_buttons()
-
-# A and B on the right controller, X and Y on the left, the left and right stick clicks (or 1 to 6 on a keyboard); each
-# press runs one test.
-func _read_test_buttons() -> void:
-	var buttons := [
-		right.controller.is_button_pressed(&'ax_button'), right.controller.is_button_pressed(&'by_button'),
-		left.controller.is_button_pressed(&'ax_button'), left.controller.is_button_pressed(&'by_button'),
-		left.controller.is_button_pressed(&'primary_click'), right.controller.is_button_pressed(&'primary_click'),
-	]
-	for index in range(buttons.size()):
-		var down: bool = buttons[index] or Input.is_key_pressed(KEY_1 + index)
-		if down and not test_was[index]: press_test(index)
-		test_was[index] = down

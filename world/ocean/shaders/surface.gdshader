@@ -47,79 +47,60 @@ void vertex() {
 	NORMAL = wave_normal;
 }
 
-// Seen from below, anything further away than this (or 1.8 times the viewer's depth, if that is more) is mostly fog
-// already, and the surface there is almost the colour of the water around it. It is drawn without the ripple lookups, the
-// sky through the window or the foam, which is most of the surface's cost. The window overhead is always nearer than this.
-uniform float underside_far_distance = 35.0;
-
 void fragment() {
-	vec3 eye_vector = CAMERA_POSITION_WORLD - ocean_position;
-	float eye_distance = max(length(eye_vector), 0.0001);
-	vec3 eye_direction = eye_vector / eye_distance;
+	vec2 uv = ocean_position.xz;
 	float t = simulation_time;
-	float thickness = 200.0;
-	vec3 scatter = mix(shallow_color, deep_color, 1.0 - exp(-thickness * 0.045));
-	// Water colour is emissive, so it needs its own brightness drop at night.
-	float light_level = mix(0.035, 1.0, day_amount);
-	vec3 world_normal;
-	vec3 transmitted;
-	float fresnel = 0.0;
-	float foam = 0.0;
-	float facing = 0.0;
+	vec2 texel = vec2(1.0 / 1024.0);
+	vec2 p = uv * 0.045 + vec2(t * 0.005, -t * 0.003);
+	vec2 q = uv * 0.31 + vec2(-t * 0.012, t * 0.008);
+	float n = texture(detail_texture, p).r;
+	float small = texture(detail_texture, q).r;
+	vec2 gradient=texture(detail_normals,p).rg*2.0-1.0;
+	vec2 fine=texture(detail_normals,q).rg*2.0-1.0;
+	vec3 world_normal=normalize(ocean_normal+vec3(gradient.x+fine.x*0.2727,0.0,gradient.y+fine.y*0.2727));
+	vec3 eye_direction = normalize(CAMERA_POSITION_WORLD - ocean_position);
 	if (FRONT_FACING) {
-		vec2 uv = ocean_position.xz;
-		vec2 p = uv * 0.045 + vec2(t * 0.005, -t * 0.003);
-		vec2 q = uv * 0.31 + vec2(-t * 0.012, t * 0.008);
-		float n = texture(detail_texture, p).r;
-		float small = texture(detail_texture, q).r;
-		vec2 gradient=texture(detail_normals,p).rg*2.0-1.0;
-		vec2 fine=texture(detail_normals,q).rg*2.0-1.0;
-		world_normal=normalize(ocean_normal+vec3(gradient.x+fine.x*0.2727,0.0,gradient.y+fine.y*0.2727));
 		// Detail normals can tilt the mirror direction under the horizon, where the sky
 		// radiance is the near-black ground colour. Lift such reflections back above it.
 		vec3 mirror = reflect(-eye_direction, world_normal);
 		float below = smoothstep(0.12, -0.04, mirror.y);
 		vec3 lifted = normalize(eye_direction + vec3(mirror.x, max(mirror.y, 0.0) + 0.03, mirror.z));
 		world_normal = normalize(mix(world_normal, lifted, below));
-		vec3 transmission = exp(-absorption * min(thickness, 200.0));
-		facing = clamp(dot(world_normal, eye_direction), 0.0, 1.0);
-		fresnel = 0.02037 + 0.97963 * pow(1.0 - facing, 5.0);
-		float whitecap = smoothstep(0.10, 0.42, wave_compression) * smoothstep(0.40, 0.77, n + small * 0.22);
-		foam = clamp(whitecap, 0.0, 1.0);
-		transmitted = scatter * (1.0 - transmission) * light_level;
-	} else if (eye_distance > max(underside_far_distance, 1.8 * max(ocean_position.y - CAMERA_POSITION_WORLD.y, 0.0))) {
-		// Far surface seen from below: the mirrored water colour on the surface's own smooth normal.
-		world_normal = -normalize(ocean_normal);
-		vec3 mirrored = mix(shallow_color * 0.35 * 0.035, underwater_water_colour(reflect(-eye_direction, world_normal), sky_sun_direction, 1.0, 1.5, 0.0), day_amount);
-		transmitted = mirrored;
-	} else {
-		// Near surface seen from below. Light from the sky only gets through inside a cone overhead (Snell's
+	}
+	vec3 view_normal = normalize((VIEW_MATRIX * vec4(world_normal, 0.0)).xyz);
+	float thickness = 200.0;
+	vec3 transmission = exp(-absorption * min(thickness, 200.0));
+	float facing = clamp(dot(world_normal, eye_direction), 0.0, 1.0);
+	float fresnel = 0.02037 + 0.97963 * pow(1.0 - facing, 5.0);
+	float whitecap = smoothstep(0.10, 0.42, wave_compression) * smoothstep(0.40, 0.77, n + small * 0.22);
+	float foam = clamp(whitecap, 0.0, 1.0);
+	vec3 scatter = mix(shallow_color, deep_color, 1.0 - exp(-thickness * 0.045));
+	// Water colour is emissive, so it needs its own brightness drop at night.
+	float light_level = mix(0.035, 1.0, day_amount);
+	vec3 transmitted = scatter * (1.0 - transmission) * light_level;
+	if (!FRONT_FACING) {
+		// Seen from below. Light from the sky only gets through inside a cone overhead (Snell's
 		// window, about 49 degrees from straight up); outside it the surface acts as a mirror and
 		// shows the water below. A smoother normal keeps the window's edge wavy and clean.
-		vec2 uv = ocean_position.xz;
-		vec2 p = uv * 0.045 + vec2(t * 0.005, -t * 0.003);
-		vec2 q = uv * 0.31 + vec2(-t * 0.012, t * 0.008);
-		vec2 gradient=texture(detail_normals,p).rg*2.0-1.0;
-		vec2 fine=texture(detail_normals,q).rg*2.0-1.0;
 		vec3 detail = vec3(gradient.x + fine.x * 0.2727, 0.0, gradient.y + fine.y * 0.2727) * underside_detail;
 		world_normal = -normalize(ocean_normal + detail);
 		float cos_view = clamp(dot(world_normal, eye_direction), 0.0, 1.0);
 		float window = smoothstep(0.63, 0.75, cos_view);
+		vec3 ray = refract(-eye_direction, world_normal, 1.333);
 		vec3 sky_through = vec3(0.0);
-		if (window > 0.0) {
-			vec3 ray = refract(-eye_direction, world_normal, 1.333);
-			if (dot(ray, ray) > 0.000001) {
-				vec3 air = normalize(ray);
-				float toward_sun = clamp(dot(air, normalize(sky_sun_direction)), 0.0, 1.0);
-				float sun_up = smoothstep(-0.05, 0.2, sky_sun_direction.y);
-				// Sky seen through the water is a little bluer than from above.
-				sky_through = refracted_sky(air) * vec3(0.78, 0.92, 1.08) * underside_window_brightness
-					+ sky_sun_color * sun_up * underside_sun_glare * (pow(toward_sun, 900.0) * 8.0 + pow(toward_sun, 60.0) * 0.25);
-			}
+		if (dot(ray, ray) > 0.000001) {
+			vec3 air = normalize(ray);
+			float toward_sun = clamp(dot(air, normalize(sky_sun_direction)), 0.0, 1.0);
+			float sun_up = smoothstep(-0.05, 0.2, sky_sun_direction.y);
+			// Sky seen through the water is a little bluer than from above.
+			sky_through = refracted_sky(air) * vec3(0.78, 0.92, 1.08) * underside_window_brightness
+				+ sky_sun_color * sun_up * underside_sun_glare * (pow(toward_sun, 900.0) * 8.0 + pow(toward_sun, 60.0) * 0.25);
 		}
 		// At night the mirrored part keeps the faint teal it always had.
 		vec3 mirrored = mix(shallow_color * 0.35 * 0.035, underwater_water_colour(reflect(-eye_direction, world_normal), sky_sun_direction, 1.0, 1.5, 0.0), day_amount);
 		transmitted = mix(mirrored, sky_through, window);
+		fresnel = 0.0;
+		foam *= 0.08;
 	}
 	NORMAL = normalize((VIEW_MATRIX * vec4(world_normal, 0.0)).xyz);
 	ALBEDO = mix(scatter * 0.10, foam_color, foam);
@@ -128,24 +109,21 @@ void fragment() {
 	if (glow_strength > 0.0) {
 		vec3 to_source = glow_source - ocean_position;
 		float spread = length(to_source.xz);
-		// Seen from below, past two and a half radii the pools and the pulse are far below anything visible.
-		if (FRONT_FACING || spread < glow_radius * 2.5) {
-			// A tight teal pool from the stalk under a wide violet one from the cap. A slow wave
-			// runs outward through both, so the water pulses with the mushroom. fract() keeps the
-			// time small enough for the headset's precision.
-			float pool = exp(-pow(spread / glow_radius, 2.0));
-			float core = exp(-spread / (glow_radius * 0.2));
-			float wave = 0.5 + 0.5 * sin(TAU * fract(TIME * glow_pulse_speed) - spread * 0.05);
-			vec3 spill = (glow_high * pool * 0.10 + glow_low * core * 0.35) * mix(0.6, 1.0, wave);
-			if (FRONT_FACING) {
-				// The cap mirrored in the wave facets: glints that stretch out toward the mushroom.
-				vec3 mirror = reflect(-eye_direction, world_normal);
-				float glints = pow(max(dot(mirror, normalize(to_source)), 0.0), 160.0);
-				spill += glow_high * glints * exp(-spread / (glow_radius * 2.5)) * 3.0;
-			}
-			// Dimmed, never removed, while the sun is up, like the mushroom itself.
-			EMISSION += spill * glow_strength * mix(1.0, glow_day, day_amount) * (1.0 - foam);
+		// A tight teal pool from the stalk under a wide violet one from the cap. A slow wave
+		// runs outward through both, so the water pulses with the mushroom. fract() keeps the
+		// time small enough for the headset's precision.
+		float pool = exp(-pow(spread / glow_radius, 2.0));
+		float core = exp(-spread / (glow_radius * 0.2));
+		float wave = 0.5 + 0.5 * sin(TAU * fract(TIME * glow_pulse_speed) - spread * 0.05);
+		vec3 spill = (glow_high * pool * 0.10 + glow_low * core * 0.35) * mix(0.6, 1.0, wave);
+		if (FRONT_FACING) {
+			// The cap mirrored in the wave facets: glints that stretch out toward the mushroom.
+			vec3 mirror = reflect(-eye_direction, world_normal);
+			float glints = pow(max(dot(mirror, normalize(to_source)), 0.0), 160.0);
+			spill += glow_high * glints * exp(-spread / (glow_radius * 2.5)) * 3.0;
 		}
+		// Dimmed, never removed, while the sun is up, like the mushroom itself.
+		EMISSION += spill * glow_strength * mix(1.0, glow_day, day_amount) * (1.0 - foam);
 	}
 	ROUGHNESS = mix(0.055 + (1.0 - facing) * 0.025, 0.65, foam);
 	SPECULAR = 0.25;

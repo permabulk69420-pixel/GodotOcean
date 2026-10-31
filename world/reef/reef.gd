@@ -7,8 +7,8 @@ extends Node3D
 
 const KIT := 'res://world/reef/reef_kit.glb'
 const CELL := 32.0
-const VIEW_DISTANCE := 60.0
-const SET_PIECE_VIEW_DISTANCE := 120.0
+const VIEW_DISTANCE := 70.0
+const SET_PIECE_VIEW_DISTANCE := 160.0
 
 # kind: 'rock' uses the terrain's rock material; 'coral' uses the reef material.
 # mesh: names inside the kit; one is picked at random per piece.
@@ -46,8 +46,8 @@ var set_pieces := [
 ## distance, so faraway reef costs far fewer triangles than the full-detail pieces up close.
 @export var generate_lods := true
 ## How far the stony rubble spreads around each piece on the seabed, relative to its size.
-## 0 turns it off. The ground no longer draws rubble (it is one texture now), so it is off.
-@export var rubble_spread := 0.0
+## 0 turns it off. The terrain shader draws it from the mask built in make_rubble_mask().
+@export var rubble_spread := 1.0
 @export var keep_clear_of_mushroom := 28.0
 @export var keep_clear_of_entrances := 8.0
 

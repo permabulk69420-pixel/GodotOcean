@@ -4,11 +4,10 @@ extends RefCounted
 ## The render counts are for the visible pass of the main viewport (both eyes are drawn together, so they count once).
 
 ## Row labels by section, and which of the panel's two columns each goes in; values() returns a dictionary with
-## exactly these keys. The letters in the Tests labels are the controller buttons that change them (see AbyssWatch).
+## exactly these keys.
 const SECTIONS := [
 	['Frame', ['FPS', 'Frame time', 'Slowest frame', 'GPU time', 'CPU render'], 0],
-	['Tests: press the button', ['A  Render scale', 'B  Anti-aliasing', 'X  Water surface', 'Y  Seabed', 'L-stick  Texture filter', 'R-stick  Terrain pass'], 0],
-	['Rendering', ['Draw calls', 'Triangles'], 1],
+	['Rendering', ['Draw calls', 'Triangles'], 0],
 	['Memory', ['App RAM', 'Video', 'Textures', 'Buffers'], 1],
 	['State', ['Water', 'Refresh', 'Foveation'], 1],
 ]
@@ -74,13 +73,6 @@ func values(viewport: Viewport, game: Node, target: float) -> Dictionary:
 	if game != null and game.get('depth') != null:
 		var depth: float = game.get('depth')
 		water = ('%.1f m under' % depth) if game.get('submerged') else ('%.1f m above' % -depth)
-	var water_surface := NONE
-	var seabed := NONE
-	var terrain_pass := NONE
-	if game != null and game.get('ocean') != null:
-		water_surface = ['Auto', 'Lit', 'Shape only', 'Hidden'][game.get('water_test')]
-		terrain_pass = 'Transparent (old)' if game.get('terrain_transparent_test') else 'Opaque'
-		seabed = ['Auto', 'No terrain', 'No reef', 'No seagrass', 'Hidden'][game.get('seabed_test')]
 	var xr := XRServer.primary_interface
 	var strength = xr.get('vrs_strength') if xr != null else null
 	var rows := {
@@ -97,12 +89,6 @@ func values(viewport: Viewport, game: Node, target: float) -> Dictionary:
 		'Buffers': megabytes(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_BUFFER_MEM_USED)),
 		'Water': water,
 		'Refresh': '%.0f Hz' % target,
-		'A  Render scale': '%.1fx' % viewport.scaling_3d_scale,
-		'B  Anti-aliasing': ['Off', '2x MSAA', '4x MSAA', '8x MSAA'][viewport.msaa_3d],
-		'X  Water surface': water_surface,
-		'Y  Seabed': seabed,
-		'L-stick  Texture filter': ['Off', '2x', '4x', '8x', '16x'][viewport.anisotropic_filtering_level],
-		'R-stick  Terrain pass': terrain_pass,
 		'Foveation': ('x%.1f' % float(strength)) if strength != null and viewport.vrs_mode == Viewport.VRS_XR else 'Off',
 	}
 	return rows
