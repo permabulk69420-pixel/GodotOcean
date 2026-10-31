@@ -58,14 +58,14 @@ jobs:
             echo "APP_NAME=Abyss Ocean OpenGL ${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
             echo "RELEASE_TITLE=Abyss Ocean — ${GITHUB_REF_NAME} (Godot 4.7.2, OpenGL)" >> "$GITHUB_ENV"
           fi
-          # Keep the successful OpenGL baseline intact and install this isolated
-          # sky-refiltering test as a separate Quest app, without a new branch.
+          # Keep both OpenGL and Sky Freeze baselines intact; restore the original rock
+          # materials as a third separate Quest app, without creating a branch.
           if [ "$GITHUB_REF_NAME" = "ccr-f169f256-0p7v1d" ]; then
             sed -i -E '/^(RELEASE_TAG|PACKAGE_SUFFIX|APP_NAME|RELEASE_TITLE)=/d' "$GITHUB_ENV"
-            echo "RELEASE_TAG=abyss-test-ccr-f169f256-0p7v1d-opengl-skyfreeze" >> "$GITHUB_ENV"
-            echo "PACKAGE_SUFFIX=glskyfreeze" >> "$GITHUB_ENV"
-            echo "APP_NAME=Abyss Ocean Sky Freeze" >> "$GITHUB_ENV"
-            echo "RELEASE_TITLE=Abyss Ocean — OpenGL sky depth freeze test" >> "$GITHUB_ENV"
+            echo "RELEASE_TAG=abyss-test-ccr-f169f256-0p7v1d-opengl-rocks" >> "$GITHUB_ENV"
+            echo "PACKAGE_SUFFIX=glrocks" >> "$GITHUB_ENV"
+            echo "APP_NAME=Abyss Ocean Rock Textures" >> "$GITHUB_ENV"
+            echo "RELEASE_TITLE=Abyss Ocean — OpenGL original rock textures test" >> "$GITHUB_ENV"
           fi
 
       - uses: actions/setup-java@v4
@@ -237,13 +237,13 @@ jobs:
             gh release create "$tag" artifacts/AbyssOcean-Godot472-Quest3.apk --target "$SOURCE_SHA" --title "$RELEASE_TITLE" --notes "Built from $SOURCE_SHA. Separate application from the 4.6.3 baseline; test performance on the Quest 3." --prerelease
           fi
 
-      - name: Attach the sky depth freeze test beside the existing OpenGL APK
+      - name: Attach the restored rock textures test beside the existing OpenGL APK
         if: ${{ github.ref_name == 'ccr-f169f256-0p7v1d' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          cp artifacts/AbyssOcean-Godot472-Quest3.apk artifacts/AbyssOcean-SkyFreeze-Quest3.apk
+          cp artifacts/AbyssOcean-Godot472-Quest3.apk artifacts/AbyssOcean-RockTextures-Quest3.apk
           gh release view abyss-current > /dev/null
-          gh release upload abyss-current artifacts/AbyssOcean-SkyFreeze-Quest3.apk --clobber
+          gh release upload abyss-current artifacts/AbyssOcean-RockTextures-Quest3.apk --clobber
           gh release view abyss-current --json assets --jq '.assets[].name'

@@ -6,6 +6,10 @@ extends Node3D
 ## collision that came with the kit.
 
 const KIT := 'res://world/reef/reef_kit.glb'
+## Original rock_boulder_dry colour and normals; keep the seabed shader untouched.
+const ROCK_SHADER := preload('res://world/reef/rock.gdshader')
+const ROCK_COLOUR := preload('res://world/terrain/textures/rock_colour.jpg')
+const ROCK_NORMAL := preload('res://world/terrain/textures/rock_normal.jpg')
 const CELL := 32.0
 const VIEW_DISTANCE := 60.0
 const SET_PIECE_VIEW_DISTANCE := 120.0
@@ -54,6 +58,7 @@ var set_pieces := [
 var meshes: Dictionary = {}
 var collisions: Dictionary = {}
 var coral_material: ShaderMaterial
+var rock_material: ShaderMaterial
 var piece_count := 0
 # x, z and rubble radius of every placed piece, for the rubble mask.
 var rubble_spots: Array[Vector3] = []
@@ -63,6 +68,8 @@ const RUBBLE_TEXELS_PER_METRE := 2.0
 func set_daylight(daylight: float) -> void:
 	if coral_material:
 		coral_material.set_shader_parameter('day_amount', daylight)
+	if rock_material:
+		rock_material.set_shader_parameter('sun_shadow_strength', daylight)
 
 func _ready() -> void:
 	if not enabled:
@@ -81,7 +88,7 @@ func _ready() -> void:
 	var cells := {'rock': {}, 'coral': {}}
 	for index in range(species.size()):
 		place_species(index, species[index], generator, mushroom, half, rng, cells)
-	var rock_material: Material = terrain.material
+	rock_material = make_rock_material()
 	for kind in cells:
 		for cell: Vector2i in cells[kind]:
 			var instance := MeshInstance3D.new()
@@ -142,6 +149,14 @@ func load_kit() -> void:
 						shapes.append([(body as StaticBody3D).transform * (child as CollisionShape3D).transform, child.shape])
 		collisions[String(instance.name)] = shapes
 	root.free()
+
+## Dedicated material: restore rock detail without adding samples to the terrain path.
+func make_rock_material() -> ShaderMaterial:
+	var material := ShaderMaterial.new()
+	material.shader = ROCK_SHADER
+	material.set_shader_parameter('rock_colour', ROCK_COLOUR)
+	material.set_shader_parameter('rock_normal', ROCK_NORMAL)
+	return material
 
 func make_coral_material() -> ShaderMaterial:
 	var material := ShaderMaterial.new()
