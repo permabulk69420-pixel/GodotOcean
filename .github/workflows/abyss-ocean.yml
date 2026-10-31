@@ -19,7 +19,7 @@ jobs:
       matrix:
         stereo: ['0', '1']
     env:
-      GODOT_VERSION: '4.6.3'
+      GODOT_VERSION: '4.7.2'
     steps:
       - uses: actions/checkout@v4
       - name: Install Vulkan preview dependencies
