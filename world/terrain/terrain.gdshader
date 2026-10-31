@@ -49,7 +49,12 @@ void fragment() {
  AO = 1.0;
  AO_LIGHT_AFFECT = 0.0;
  SPECULAR = 0.5;
- caustic = caustic_light(world_position, TIME);
+ // Only nearby terrain needs projected moving caustics. Keep them fully on equipment.
+ // Beyond 46 m the caustic lookup itself is skipped, not just faded after sampling.
+ float terrain_distance = surface_kind == 0 ? distance(world_position, CAMERA_POSITION_WORLD) : 0.0;
+ float caustic_strength = 1.0 - smoothstep(30.0, 46.0, terrain_distance);
+ caustic = (surface_kind > 0 || terrain_distance < 46.0)
+  ? mix(1.0, caustic_light(world_position, TIME), caustic_strength) : 1.0;
  if (surface_kind > 0) {
   // Procedural housings have no texture UVs. Only the imported skin samples
   // UV textures; sampling a missing UV channel produces undefined derivatives.
@@ -73,6 +78,9 @@ void fragment() {
   EMISSION = emitted;
  } else {
  vec3 n = normalize(world_normal);
+ // Normal-map relief is hard to see through underwater fog beyond a few tens of metres.
+ // Fade it smoothly between 14 and 28 m; skip the normal texture lookups past 28 m.
+ float normal_detail = 1.0 - smoothstep(14.0, 28.0, terrain_distance);
  // 1 on level ground, 0 on rock and steep faces (baked into the vertex colour).
  float flat_amount = COLOR.r;
  vec3 axis_sign = vec3(n.x < 0.0 ? -1.0 : 1.0, 1.0, n.z < 0.0 ? -1.0 : 1.0);
@@ -89,24 +97,28 @@ void fragment() {
  vec3 top_n = n;
  if (flat_amount > 0.002) {
   top_colour = textureGrad(ground_colour, top_uv, top_dx, top_dy).rgb;
-  vec3 t = unpack_normal(textureGrad(ground_normal, top_uv, top_dx, top_dy), ground_normal_strength);
-  // Whiteout blend onto the world normal; level ground is projected from above.
-  t = vec3(t.xy + n.xz, abs(t.z) * n.y);
-  top_n = normalize(t.xzy);
+  if (normal_detail > 0.001) {
+   vec3 t = unpack_normal(textureGrad(ground_normal, top_uv, top_dx, top_dy), ground_normal_strength);
+   // Whiteout blend onto the world normal; level ground is projected from above.
+   t = vec3(t.xy + n.xz, abs(t.z) * n.y);
+   top_n = normalize(mix(n, normalize(t.xzy), normal_detail));
+  }
  }
  vec3 side_colour = vec3(0.0);
  vec3 side_n = n;
  if (flat_amount < 0.998) {
   side_colour = textureGrad(ground_colour, side_uv, side_dx, side_dy).rgb;
-  vec3 t = unpack_normal(textureGrad(ground_normal, side_uv, side_dx, side_dy), ground_normal_strength);
-  if (along_x) {
-   t.x *= axis_sign.x;
-   t = vec3(t.xy + n.zy, abs(t.z) * n.x);
-   side_n = normalize(t.zyx);
-  } else {
-   t.x *= -axis_sign.z;
-   t = vec3(t.xy + n.xy, abs(t.z) * n.z);
-   side_n = normalize(t.xyz);
+  if (normal_detail > 0.001) {
+   vec3 t = unpack_normal(textureGrad(ground_normal, side_uv, side_dx, side_dy), ground_normal_strength);
+   if (along_x) {
+    t.x *= axis_sign.x;
+    t = vec3(t.xy + n.zy, abs(t.z) * n.x);
+    side_n = normalize(mix(n, normalize(t.zyx), normal_detail));
+   } else {
+    t.x *= -axis_sign.z;
+    t = vec3(t.xy + n.xy, abs(t.z) * n.z);
+    side_n = normalize(mix(n, normalize(t.xyz), normal_detail));
+   }
   }
  }
  vec3 albedo = mix(side_colour * rock_tint, top_colour * sand_tint, flat_amount);
