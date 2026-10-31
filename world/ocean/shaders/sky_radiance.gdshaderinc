@@ -40,26 +40,31 @@ uniform float day_amount=1.0;
 uniform vec3 sky_night_color : source_color=vec3(0.0006,0.0016,0.0045);
 // Same atmospheric scattering as the scene's PhysicalSkyMaterial. Evaluate the
 // refracted ray rather than copying, resolving and resampling both eye images.
-vec3 refracted_sky(vec3 direction) {
+// The sky only depends on how high a direction points (up = its y) and how close it is to the sun
+// (cosine = its dot product with the sun direction), which lets window_sky.gd bake it into a small table.
+vec3 sky_radiance(float up, float cosine) {
  float sun_zenith=clamp(sky_sun_direction.y,-1.0,1.0);
  float energy=max(0.0,0.757*sun_zenith)*1.6;
  float fade=1.0-clamp(1.0-exp(sky_sun_direction.y),0.0,1.0);
  vec3 beta_r=(2.0-(1.0-fade))*sky_rayleigh_color*0.0001;
  vec3 beta_m=10.0*0.003*sky_mie_color*0.000434;
- float zenith=max(0.0,direction.y);
+ float zenith=max(0.0,up);
  float mass=1.0/(zenith+0.15*pow(3.885+54.5*zenith,-1.253));
  vec3 extinction=exp(-(beta_r*8400.0*mass+beta_m*1250.0*mass));
- float cosine=dot(direction,sky_sun_direction);
  float phase_r=(3.0/(16.0*PI))*(1.0*pow(cosine*0.5+0.5,2.0)+1.0);
  float phase_m=0.0795774715459*(1.0-0.8*0.8)/pow(max(1.0+0.8*0.8-2.0*0.8*cosine,0.02),1.5);
  vec3 incident=energy*(beta_r*phase_r+beta_m*phase_m)/(beta_r+beta_m);
  vec3 scattering=pow(incident*(1.0-extinction),vec3(1.5));
  scattering*=mix(vec3(1.0),pow(incident*extinction,vec3(0.5)),clamp(pow(1.0-sun_zenith,5.0),0.0,1.0));
- scattering*=mix(sky_ground_color,vec3(1.0),smoothstep(-0.1,0.1,direction.y));
+ scattering*=mix(sky_ground_color,vec3(1.0),smoothstep(-0.1,0.1,up));
  // No separate sun disk: the Mie glow from phase_m already marks the sun, and the disk's
  // tiny thresholds were the suspected cause of a black square on the headset. NaN/Inf
  // are zeroed so a bad sample can never blank pixels.
- vec3 color=scattering+sky_night_color*(1.0-day_amount)*smoothstep(-0.1,0.1,direction.y);
+ vec3 color=scattering+sky_night_color*(1.0-day_amount)*smoothstep(-0.1,0.1,up);
  if (any(isnan(color)) || any(isinf(color))) color=vec3(0.0);
  return pow(clamp(color,vec3(0.0),vec3(64.0)),vec3(1.0/(1.2+1.2*fade)));
+}
+
+vec3 refracted_sky(vec3 direction) {
+ return sky_radiance(direction.y,dot(direction,sky_sun_direction));
 }

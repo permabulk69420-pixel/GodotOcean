@@ -11,6 +11,7 @@ const XR_LOD_THRESHOLD := 3.0
 ## Underwater the fog has all but hidden anything past this, so the camera stops drawing there.
 const UNDERWATER_FAR := 150.0
 const UNDERWATER_SKY_SHADER := preload("res://world/ocean/shaders/underwater_sky.gdshader")
+const WATER_UNDERSIDE_SHADER := preload("res://world/ocean/shaders/underside.gdshader")
 
 @onready var ocean: AbyssOcean = $Ocean
 @onready var player: AbyssSwimmer = $Player
@@ -38,13 +39,14 @@ var seabed_shown := true
 var surface_far := 6000.0
 ## The watch's performance test steps this: 0 everything shown, 1 no terrain, 2 no reef, 3 no seagrass, 4 none of them.
 var seabed_test := 0
-## The water surface. 0 (the default) draws it lit above the water and unlit below it (seen from underneath nothing the engine's
-## lighting adds shows, so it is skipped); 1 lit always (what it used to be); 2 the same mesh with a one-line shader (what the
-## shape alone costs); 3 hidden. The last three are for the watch's performance test.
+## The water surface. 0 (the default) draws it lit above the water and, below it, with its own cheap underside shader
+## (world/ocean/shaders/underside.gdshader). The rest are for the watch's performance test: 1 the old underside, unlit (what
+## 0 used to be); 2 the old shader lit always; 3 the same mesh with a one-line shader (what the shape alone costs); 4 hidden.
 var water_test := 0
 var water_shader: Shader
 var water_unlit_shader: Shader
 var water_shape_shader: Shader
+var water_underside_shader: Shader = WATER_UNDERSIDE_SHADER
 ## True while the watch panel is open, so the time of day stays put while its numbers are read.
 var freeze_time := false
 ## The terrain is drawn as a normal opaque surface. The watch's performance test can swap the old version back in (it wrote
@@ -149,6 +151,7 @@ func _process(delta: float) -> void:
 	plankton.update(delta, camera.global_position, sources, boosts, day_night.daylight, submerged)
 	light_shafts.update(camera.global_position, day_night.daylight, submerged)
 	mushroom.set_daylight(day_night.daylight)
+	ocean.window_sky.bake(day_night.sun_direction, day_night.daylight)
 	reef.set_daylight(day_night.daylight)
 	ambience.update(delta, submerged, player.head_depth, player.thrusters.motors, player.thrusters.throttles)
 	if not cache_bound and ocean.wave_cache.ready:
@@ -184,7 +187,7 @@ func update_water_state() -> void:
 	var energy := day_night.light_energy() * (exp(-maxf(depth, 0.0) * 0.02) if submerged else 1.0)
 	if not is_equal_approx(sun.light_energy,energy): sun.light_energy=energy
 
-## Builds the unlit underwater version and the shape-only test version from the water shader's own code.
+## Builds the old unlit underwater version and the shape-only test version from the water shader's own code.
 func build_water_shaders() -> void:
 	water_shader = ocean.material.shader
 	var code := water_shader.code
@@ -196,13 +199,13 @@ func build_water_shaders() -> void:
 	water_unlit_shader.code = code.substr(0, light_start) \
 		.replace("render_mode world_vertex_coords, cull_disabled, depth_draw_opaque;", "render_mode world_vertex_coords, cull_disabled, depth_draw_opaque, unshaded;") \
 		.replace("	METALLIC = 0.0;\n}", "	METALLIC = 0.0;\n	ALBEDO = EMISSION;\n	EMISSION = vec3(0.0);\n}")
-	# Draw the unlit version once, a speck in front of the camera, so the engine builds it now and not on the first dive.
+	# Draw the underwater version once, a speck in front of the camera, so the engine builds it now and not on the first dive.
 	var warm := MeshInstance3D.new()
 	warm.mesh = ocean.surface.mesh
 	warm.custom_aabb = ocean.surface.custom_aabb
 	warm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	var warm_material := ShaderMaterial.new()
-	warm_material.shader = water_unlit_shader
+	warm_material.shader = water_underside_shader
 	warm.material_override = warm_material
 	camera.add_child(warm)
 	warm.position = Vector3(0.0, 0.0, -1.0)
@@ -211,10 +214,11 @@ func build_water_shaders() -> void:
 
 ## Picks the water's shader and visibility for the current state.
 func apply_water_shader() -> void:
-	ocean.surface.visible = water_test != 3
+	ocean.surface.visible = water_test != 4
 	var shader := water_shader
-	if water_test == 0 and submerged: shader = water_unlit_shader
-	elif water_test == 2: shader = water_shape_shader
+	if water_test == 0 and submerged: shader = water_underside_shader
+	elif water_test == 1 and submerged: shader = water_unlit_shader
+	elif water_test == 3: shader = water_shape_shader
 	if ocean.material.shader != shader: ocean.material.shader = shader
 
 func set_water_test(mode: int) -> void:

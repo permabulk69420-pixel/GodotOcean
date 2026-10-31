@@ -19,6 +19,8 @@ var surface: MeshInstance3D
 var wave_cache: AbyssWaveCache
 var detail_normal_texture: NoiseTexture2D
 var detail_texture: NoiseTexture2D
+## The sky seen through the window overhead from under the water, for underside.gdshader.
+var window_sky: AbyssWindowSky
 
 func _ready() -> void:
 	if not settings: settings = AbyssOceanSettings.new()
@@ -50,6 +52,10 @@ func _ready() -> void:
 	detail_normal_texture.as_normal_map=true
 	detail_normal_texture.bump_strength=5.5
 	material.set_shader_parameter("detail_normals",detail_normal_texture)
+	window_sky = AbyssWindowSky.new()
+	window_sky.name = "WindowSky"
+	add_child(window_sky)
+	material.set_shader_parameter("window_sky", window_sky.get_texture())
 	surface = MeshInstance3D.new()
 	surface.name = "OceanSurface"
 	surface.mesh = _build_clipmap()

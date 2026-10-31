@@ -152,7 +152,7 @@ func press_test(index: int) -> void:
 		1:
 			viewport.msaa_3d = ((viewport.msaa_3d + 1) % 3) as Viewport.MSAA
 		2:
-			if game.get('ocean') != null: game.set_water_test((game.water_test + 1) % 4)
+			if game.get('ocean') != null: game.set_water_test((game.water_test + 1) % 5)
 		3:
 			if game.get('ocean') != null: game.set_seabed_test((game.seabed_test + 1) % 5)
 		4:
