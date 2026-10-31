@@ -33,6 +33,23 @@ jobs:
         id: source
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      # The 4.7.2 test branch keeps its own release and app. Any other branch gets a release and an app of its own,
+      # so a push from an experiment never replaces the APK someone is testing.
+      - name: Name this build
+        run: |
+          if [ "$GITHUB_REF_NAME" = "ccr-godot-472-test" ]; then
+            echo "RELEASE_TAG=abyss-godot-472-test" >> "$GITHUB_ENV"
+            echo "PACKAGE_SUFFIX=godot472test" >> "$GITHUB_ENV"
+            echo "APP_NAME=Abyss Ocean 4.7 Test" >> "$GITHUB_ENV"
+            echo "RELEASE_TITLE=Abyss Ocean — Godot 4.7.2 test" >> "$GITHUB_ENV"
+          else
+            branch_id=$(printf '%s' "$GITHUB_REF_NAME" | tr -cd 'A-Za-z0-9')
+            echo "RELEASE_TAG=abyss-test-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')" >> "$GITHUB_ENV"
+            echo "PACKAGE_SUFFIX=test${branch_id}" >> "$GITHUB_ENV"
+            echo "APP_NAME=Abyss Ocean ${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+            echo "RELEASE_TITLE=Abyss Ocean — ${GITHUB_REF_NAME} (Godot 4.7.2)" >> "$GITHUB_ENV"
+          fi
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -89,8 +106,8 @@ jobs:
           printf '\norg.gradle.workers.max=4\norg.gradle.daemon=false\n' >> android/build/gradle.properties
           # Android only updates an installed app when the version code rises, so tie it to the run number.
           sed -i -E "s/^version\/code=.*/version\/code=${{ github.run_number }}/" export_presets.cfg
-          sed -i 's/org.abyss.ocean.quest3/org.abyss.ocean.quest3.godot472test/g' export_presets.cfg
-          sed -i 's/package\/name="Abyss Ocean"/package\/name="Abyss Ocean 4.7 Test"/' export_presets.cfg
+          sed -i "s/org.abyss.ocean.quest3/org.abyss.ocean.quest3.${PACKAGE_SUFFIX}/g" export_presets.cfg
+          sed -i "s/package\/name=\"Abyss Ocean\"/package\/name=\"${APP_NAME}\"/" export_presets.cfg
           grep -n '^version/code=' export_presets.cfg
 
       - name: Restore the baked terrain
@@ -173,7 +190,7 @@ jobs:
           import re, zipfile
           manifest = Path(__import__('os').environ['RUNNER_TEMP'], 'manifest.txt').read_text()
           assert re.search(r'com\.oculus\.supportedDevices[^\n]*\n[^\n]*="quest3"', manifest)
-          assert 'org.abyss.ocean.quest3.godot472test' in manifest
+          assert 'org.abyss.ocean.quest3.' + __import__('os').environ['PACKAGE_SUFFIX'] in manifest
           assert 'org.khronos.openxr.intent.category.IMMERSIVE_HMD' in manifest
           with zipfile.ZipFile('artifacts/AbyssOcean-Godot472-Quest3.apk') as apk:
               files = apk.namelist()
@@ -193,11 +210,11 @@ jobs:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
           # Keep the production abyss-current release completely untouched.
-          tag=abyss-godot-472-test
+          tag="$RELEASE_TAG"
           if gh release view "$tag" > /dev/null 2>&1; then
             gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$SOURCE_SHA" -F force=true
             gh release upload "$tag" artifacts/AbyssOcean-Godot472-Quest3.apk --clobber
-            gh release edit "$tag" --title 'Abyss Ocean — Godot 4.7.2 test' --notes "Built from $SOURCE_SHA. Separate application from the 4.6.3 baseline; test performance on the Quest 3." --prerelease
+            gh release edit "$tag" --title "$RELEASE_TITLE" --notes "Built from $SOURCE_SHA. Separate application from the 4.6.3 baseline; test performance on the Quest 3." --prerelease
           else
-            gh release create "$tag" artifacts/AbyssOcean-Godot472-Quest3.apk --target "$SOURCE_SHA" --title 'Abyss Ocean — Godot 4.7.2 test' --notes "Built from $SOURCE_SHA. Separate application from the 4.6.3 baseline; test performance on the Quest 3." --prerelease
+            gh release create "$tag" artifacts/AbyssOcean-Godot472-Quest3.apk --target "$SOURCE_SHA" --title "$RELEASE_TITLE" --notes "Built from $SOURCE_SHA. Separate application from the 4.6.3 baseline; test performance on the Quest 3." --prerelease
           fi
