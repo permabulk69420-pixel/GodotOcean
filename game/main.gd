@@ -33,6 +33,12 @@ var submerged := false
 var seabed_shown := true
 ## The watch's performance test steps this: 0 everything shown, 1 no terrain, 2 no reef, 3 no seagrass, 4 none of them.
 var seabed_test := 0
+## The watch's performance test for the water surface: 0 as it is, 1 drawn unlit (no engine lighting, reflections or
+## ambient), 2 the same mesh with a one-line shader (what the shape alone costs), 3 hidden.
+var water_test := 0
+var water_shader: Shader
+var water_unlit_shader: Shader
+var water_shape_shader: Shader
 ## True while the watch panel is open, so the time of day stays put while its numbers are read.
 var freeze_time := false
 ## The terrain is drawn as a normal opaque surface. The watch's performance test can swap the old version back in (it wrote
@@ -166,6 +172,21 @@ func update_water_state() -> void:
 	# The colour absorption in day_night.gd already dims the light with depth; this is the rest.
 	var energy := day_night.light_energy() * (exp(-maxf(depth, 0.0) * 0.02) if submerged else 1.0)
 	if not is_equal_approx(sun.light_energy,energy): sun.light_energy=energy
+
+func set_water_test(mode: int) -> void:
+	if water_shader == null:
+		water_shader = ocean.material.shader
+		var code := water_shader.code
+		var light_start := code.find("// Godot's Mobile renderer runs its built-in light maths")
+		water_shape_shader = Shader.new()
+		water_shape_shader.code = code.substr(0, code.find("void fragment() {")) + "void fragment() { ALBEDO = vec3(0.0); EMISSION = vec3(0.02, 0.10, 0.12); ROUGHNESS = 1.0; }\n"
+		water_unlit_shader = Shader.new()
+		water_unlit_shader.code = code.substr(0, light_start) \
+			.replace("render_mode world_vertex_coords, cull_disabled, depth_draw_opaque;", "render_mode world_vertex_coords, cull_disabled, depth_draw_opaque, unshaded;") \
+			.replace("	METALLIC = 0.0;\n}", "	METALLIC = 0.0;\n	ALBEDO = EMISSION;\n	EMISSION = vec3(0.0);\n}")
+	water_test = mode
+	ocean.surface.visible = mode != 3
+	ocean.material.shader = [water_shader, water_unlit_shader, water_shape_shader, water_shader][mode]
 
 func set_seabed_test(mode: int) -> void:
 	seabed_test = mode
