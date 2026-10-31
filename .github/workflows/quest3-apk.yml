@@ -187,17 +187,12 @@ jobs:
               assert not any('/imgui-godot/' in f for f in files)
           PY
 
-      - name: Publish separate Godot 4.7.2 test APK
+      - name: Add Godot 4.7.2 test APK alongside the normal APK
         env:
           GH_TOKEN: ${{ github.token }}
-          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
-          # Keep the production abyss-current release completely untouched.
-          tag=abyss-godot-472-test
-          if gh release view "$tag" > /dev/null 2>&1; then
-            gh api --method PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" -f sha="$SOURCE_SHA" -F force=true
-            gh release upload "$tag" artifacts/AbyssOcean-Godot472-Quest3.apk --clobber
-            gh release edit "$tag" --title 'Abyss Ocean — Godot 4.7.2 test' --notes "Built from $SOURCE_SHA. Separate application from the 4.6.3 baseline; test performance on the Quest 3." --prerelease
-          else
-            gh release create "$tag" artifacts/AbyssOcean-Godot472-Quest3.apk --target "$SOURCE_SHA" --title 'Abyss Ocean — Godot 4.7.2 test' --notes "Built from $SOURCE_SHA. Separate application from the 4.6.3 baseline; test performance on the Quest 3." --prerelease
-          fi
+          # Attach the test to the same release people already use.
+          # Do NOT move the abyss-current tag or replace AbyssOcean-Quest3.apk.
+          gh release view abyss-current >/dev/null
+          gh release upload abyss-current artifacts/AbyssOcean-Godot472-Quest3.apk --clobber
+          gh release view abyss-current --json assets --jq '.assets[].name'
