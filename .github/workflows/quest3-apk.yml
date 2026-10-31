@@ -21,6 +21,7 @@ permissions:
 
 jobs:
   apk:
+    if: ${{ !contains(github.event.head_commit.message, '[copy-only]') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -196,3 +197,27 @@ jobs:
           gh release view abyss-current >/dev/null
           gh release upload abyss-current artifacts/AbyssOcean-Godot472-Quest3.apk --clobber
           gh release view abyss-current --json assets --jq '.assets[].name'
+
+  copy_opus_apk:
+    if: ${{ contains(github.event.head_commit.message, '[copy-only]') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Copy the already built Opus APK into the existing Abyss Ocean release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          source_tag=abyss-test-ccr-f169f256-0p7v1d
+          target_tag=abyss-current
+          gh release download "$source_tag" --pattern 'AbyssOcean-Godot472-Quest3.apk' --dir artifacts
+          test -s artifacts/AbyssOcean-Godot472-Quest3.apk
+          mv artifacts/AbyssOcean-Godot472-Quest3.apk artifacts/AbyssOcean-Opus-Underwater-Quest3.apk
+          sha256sum artifacts/AbyssOcean-Opus-Underwater-Quest3.apk
+          gh release view "$target_tag" >/dev/null
+          gh release upload "$target_tag" artifacts/AbyssOcean-Opus-Underwater-Quest3.apk
+          gh release view "$target_tag" --json assets --jq '.assets[].name' | tee /tmp/release-assets.txt
+          grep -Fx 'AbyssOcean-Opus-Underwater-Quest3.apk' /tmp/release-assets.txt
