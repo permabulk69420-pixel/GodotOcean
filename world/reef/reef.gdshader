@@ -3,7 +3,6 @@ shader_type spatial;
 // B = sway weight. Patches of coral are tinted by area so a reef reads as colour zones, and the
 // glow mask lights up at night in each coral's own hue mixed with a bioluminescent teal.
 render_mode cull_disabled;
-#include "res://world/ocean/shaders/underwater_light.gdshaderinc"
 
 uniform sampler2D albedo_map : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D normal_map : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
@@ -26,8 +25,6 @@ uniform float near_colour_distance = 9.0;
 
 varying vec3 world_pos;
 varying vec3 vcolour;
-// Caustic brightness for the sun (worked out in fragment, used in light).
-varying float caustic;
 
 float hash21(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -53,7 +50,6 @@ void vertex() {
 }
 
 void fragment() {
-	caustic = caustic_light(world_pos, TIME);
 	vec3 base = texture(albedo_map, UV).rgb;
 	// Kelp (high sway weight) keeps its own green; coral gets the patch tint.
 	float tintable = tint_strength * (1.0 - smoothstep(0.1, 0.45, vcolour.b));
@@ -97,8 +93,7 @@ void light() {
 		float fd90_minus_1 = 2.0 * c_l_dot_h * c_l_dot_h * ROUGHNESS - 0.5;
 		float fd_v = 1.0 + fd90_minus_1 * pow(1.0 - c_n_dot_v, 5.0);
 		float fd_l = 1.0 + fd90_minus_1 * pow(1.0 - c_n_dot_l, 5.0);
-		float shaped = LIGHT_IS_DIRECTIONAL ? caustic : 1.0;
-		DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * (fd_v * fd_l * c_n_dot_l / PI) * shaped;
+		DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * (fd_v * fd_l * c_n_dot_l / PI);
 		float alpha = max(ROUGHNESS * ROUGHNESS, 0.002);
 		float a = c_n_dot_h * alpha;
 		float k = alpha / (1.0 - c_n_dot_h * c_n_dot_h + a * a);
@@ -107,6 +102,6 @@ void light() {
 		vec3 f0 = vec3(0.16 * 0.35 * 0.35);
 		float f90 = clamp(dot(f0, vec3(50.0 * 0.33)), 0.0, 1.0);
 		vec3 fresnel_term = f0 + (f90 - f0) * pow(1.0 - c_l_dot_h, 5.0);
-		SPECULAR_LIGHT += min(c_n_dot_l * d * g * fresnel_term * LIGHT_COLOR * ATTENUATION * SPECULAR_AMOUNT * shaped, vec3(2000.0));
+		SPECULAR_LIGHT += min(c_n_dot_l * d * g * fresnel_term * LIGHT_COLOR * ATTENUATION * SPECULAR_AMOUNT, vec3(2000.0));
 	}
 }

@@ -2,8 +2,6 @@ extends Node3D
 
 signal submerged_changed(submerged: bool)
 
-const UNDERWATER_SKY_SHADER := preload("res://world/ocean/shaders/underwater_sky.gdshader")
-
 @onready var ocean: AbyssOcean = $Ocean
 @onready var player: AbyssSwimmer = $Player
 @onready var terrain: AbyssTerrain = $Terrain
@@ -19,7 +17,6 @@ const UNDERWATER_SKY_SHADER := preload("res://world/ocean/shaders/underwater_sky
 @onready var mushroom: AbyssMushroom = $Mushroom
 @onready var reef: AbyssReef = $Reef
 @onready var ambience: AbyssAmbience = $Ambience
-@onready var light_shafts: AbyssLightShafts = $LightShafts
 
 var cache_bound := false
 var xr: XRInterface
@@ -28,7 +25,6 @@ var submerged := false
 var depth := 0.0
 var surface_environment: Environment
 var underwater_environment: Environment
-var underwater_sky: ShaderMaterial
 var look := Vector2.ZERO
 
 func _ready() -> void:
@@ -39,20 +35,7 @@ func _ready() -> void:
 	ocean.wave_cache.start()
 	surface_environment = world.environment
 	underwater_environment = surface_environment.duplicate(true)
-	# Under the water the "sky" is the water itself: a gradient from bright above to dark below
-	# (world/ocean/shaders/underwater_sky.gdshader). The fog takes its colour from it (aerial
-	# perspective), and it lights the scene from above as ambient light.
-	underwater_sky = ShaderMaterial.new()
-	underwater_sky.shader = UNDERWATER_SKY_SHADER
-	var water_sky := Sky.new()
-	water_sky.sky_material = underwater_sky
-	# A small lighting copy refiltered in one go, so the fog and the open water always change in the
-	# same frame (spreading it over several frames shows a band at the horizon while it catches up).
-	water_sky.radiance_size = Sky.RADIANCE_SIZE_64
-	water_sky.process_mode = Sky.PROCESS_MODE_QUALITY
-	underwater_environment.sky = water_sky
-	underwater_environment.fog_aerial_perspective = 1.0
-	RenderingServer.global_shader_parameter_set(&"water_surface_height", ocean.sea_level)
+	underwater_environment.sky = surface_environment.sky
 	underwater_environment.fog_enabled = true
 	underwater_environment.fog_light_color = Color(0.018, 0.22, 0.29)
 	underwater_environment.fog_density = 0.026
@@ -60,7 +43,7 @@ func _ready() -> void:
 	underwater_environment.ambient_light_color = Color(0.06, 0.32, 0.40)
 	underwater_environment.ambient_light_energy = 0.38
 	day_night.evaluate()
-	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, terrain.material, 1.0, 0.0, underwater_sky)
+	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, terrain.material, 1.0)
 	xr = XRServer.primary_interface
 	if not xr or not xr.is_initialized(): xr = XRServer.find_interface("OpenXR")
 	if xr and (xr.is_initialized() or (OS.has_feature("android") and xr.initialize())):
@@ -101,14 +84,13 @@ func _on_stopping() -> void:
 
 func _process(delta: float) -> void:
 	day_night.advance(delta)
-	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, terrain.material, delta, maxf(player.head_depth, 0.0) if submerged else 0.0, underwater_sky)
+	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, terrain.material, delta, maxf(player.head_depth, 0.0) if submerged else 0.0)
 	var sources := PackedVector3Array([camera.global_position, left_controller.global_position, right_controller.global_position])
 	var boosts := PackedFloat32Array([0.0, 0.0, 0.0])
 	for i in range(player.thrusters.motors.size()):
 		sources.append(player.thrusters.motors[i].global_position)
 		boosts.append(player.thrusters.throttles[i] * 1.5)
 	plankton.update(delta, camera.global_position, sources, boosts, day_night.daylight, submerged)
-	light_shafts.update(camera.global_position, day_night.daylight, submerged)
 	mushroom.set_daylight(day_night.daylight)
 	reef.set_daylight(day_night.daylight)
 	ambience.update(delta, submerged, player.head_depth, player.thrusters.motors, player.thrusters.throttles)

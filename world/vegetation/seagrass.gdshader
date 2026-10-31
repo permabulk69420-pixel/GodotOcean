@@ -3,7 +3,6 @@ shader_type spatial;
 // Blades are two-sided and thin, so light passes through them (translucency) and there is no
 // specular term at all, which avoids the half-precision light bug the other shaders work around.
 render_mode cull_disabled, depth_draw_opaque;
-#include "res://world/ocean/shaders/underwater_light.gdshaderinc"
 
 uniform vec3 base_colour : source_color = vec3(0.04, 0.16, 0.08);
 uniform vec3 tip_colour : source_color = vec3(0.34, 0.62, 0.20);
@@ -13,9 +12,6 @@ uniform vec3 current = vec3(0.6, 0.0, 0.35);
 
 varying float height_t;
 varying float blade;
-varying vec3 world_position;
-// Caustic brightness for the sun (worked out in fragment, used in light).
-varying float caustic;
 
 void vertex() {
 	height_t = COLOR.r;
@@ -26,11 +22,9 @@ void vertex() {
 	float weight = height_t * height_t;
 	vec3 push = vec3(wave * 0.7 + current.x, 0.0, wave * 0.5 + current.z) * sway_amount * weight;
 	VERTEX += inverse(mat3(MODEL_MATRIX)) * push;
-	world_position = world + push;
 }
 
 void fragment() {
-	caustic = caustic_light(world_position, TIME);
 	float t = smoothstep(0.0, 1.0, height_t);
 	ALBEDO = mix(base_colour, tip_colour, t) * mix(0.8, 1.25, blade);
 	ROUGHNESS = 0.6;
@@ -40,6 +34,5 @@ void fragment() {
 void light() {
 	float n_dot_l = dot(NORMAL, LIGHT);
 	// Front lighting plus a softer transmitted share from behind.
-	float shaped = LIGHT_IS_DIRECTIONAL ? caustic : 1.0;
-	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * (max(n_dot_l, 0.0) + 0.4 * max(-n_dot_l, 0.0)) / PI * shaped;
+	DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * (max(n_dot_l, 0.0) + 0.4 * max(-n_dot_l, 0.0)) / PI;
 }

@@ -2,7 +2,6 @@ shader_type spatial;
 // Giant landmark mushroom. The model supplies the textures and two vertex colours:
 // COLOR.r = glow weight, COLOR.g = pulse phase. All glow colour and animation is here.
 render_mode cull_back;
-#include "res://world/ocean/shaders/underwater_light.gdshaderinc"
 
 uniform sampler2D albedo_map : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D normal_map : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
@@ -22,19 +21,14 @@ uniform float day_glow = 0.30;
 varying float glow_weight;
 varying float phase;
 varying float height;
-varying vec3 world_position;
-// Caustic brightness for the sun (worked out in fragment, used in light).
-varying float caustic;
 
 void vertex() {
 	glow_weight = COLOR.r;
 	phase = COLOR.g;
 	height = VERTEX.y;
-	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
 void fragment() {
-	caustic = caustic_light(world_position, TIME);
 	ALBEDO = texture(albedo_map, UV).rgb;
 	vec4 orm = texture(orm_map, UV);
 	AO = orm.r;
@@ -69,8 +63,7 @@ void light() {
 		float fd90_minus_1 = 2.0 * c_l_dot_h * c_l_dot_h * ROUGHNESS - 0.5;
 		float fd_v = 1.0 + fd90_minus_1 * pow(1.0 - c_n_dot_v, 5.0);
 		float fd_l = 1.0 + fd90_minus_1 * pow(1.0 - c_n_dot_l, 5.0);
-		float shaped = LIGHT_IS_DIRECTIONAL ? caustic : 1.0;
-		DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * (fd_v * fd_l * c_n_dot_l / PI) * shaped;
+		DIFFUSE_LIGHT += LIGHT_COLOR * ATTENUATION * (fd_v * fd_l * c_n_dot_l / PI);
 
 		float alpha = max(ROUGHNESS * ROUGHNESS, 0.002);
 		float a = c_n_dot_h * alpha;
@@ -80,6 +73,6 @@ void light() {
 		vec3 f0 = vec3(0.16 * 0.5 * 0.5);
 		float f90 = clamp(dot(f0, vec3(50.0 * 0.33)), 0.0, 1.0);
 		vec3 fresnel_term = f0 + (f90 - f0) * pow(1.0 - c_l_dot_h, 5.0);
-		SPECULAR_LIGHT += min(c_n_dot_l * d * g * fresnel_term * LIGHT_COLOR * ATTENUATION * SPECULAR_AMOUNT * shaped, vec3(2000.0));
+		SPECULAR_LIGHT += min(c_n_dot_l * d * g * fresnel_term * LIGHT_COLOR * ATTENUATION * SPECULAR_AMOUNT, vec3(2000.0));
 	}
 }
