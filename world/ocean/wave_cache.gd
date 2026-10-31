@@ -3,6 +3,8 @@ extends RefCounted
 ## Update shared wave textures before the mobile renderer opens its tile render pass.
 var displacement := Texture2DRD.new()
 var normals := Texture2DRD.new()
+## The normals have their own texture here (see wave_cache_gl.gd for when they do not).
+var normal_row := 0
 var points := PackedByteArray()
 var spectrum := PackedByteArray()
 var vertex_count := 0

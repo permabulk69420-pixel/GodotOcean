@@ -3,6 +3,7 @@ shader_type spatial;
 // Blades are two-sided and thin, so light passes through them (translucency) and there is no
 // specular term at all, which avoids the half-precision light bug the other shaders work around.
 render_mode cull_disabled, depth_draw_opaque;
+#include "res://world/shaders/colour_space.gdshaderinc"
 #include "res://world/ocean/shaders/underwater_light.gdshaderinc"
 
 uniform vec3 base_colour : source_color = vec3(0.04, 0.16, 0.08);
@@ -32,7 +33,7 @@ void vertex() {
 void fragment() {
 	caustic = caustic_light(world_position, TIME);
 	float t = smoothstep(0.0, 1.0, height_t);
-	ALBEDO = mix(base_colour, tip_colour, t) * mix(0.8, 1.25, blade);
+	ALBEDO = linear_out(mix(linear_in(base_colour), linear_in(tip_colour), t) * mix(0.8, 1.25, blade));
 	ROUGHNESS = 0.6;
 	SPECULAR = 0.0;
 }

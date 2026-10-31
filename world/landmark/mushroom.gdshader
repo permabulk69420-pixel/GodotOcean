@@ -3,6 +3,7 @@ shader_type spatial;
 // COLOR.r = glow weight, COLOR.g = pulse phase. All glow colour and animation is here.
 render_mode cull_back;
 #include "res://world/ocean/shaders/underwater_light.gdshaderinc"
+#include "res://world/shaders/colour_space.gdshaderinc"
 
 uniform sampler2D albedo_map : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D normal_map : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
@@ -43,13 +44,13 @@ void fragment() {
 	SPECULAR = 0.5;
 	NORMAL_MAP = texture(normal_map, UV).xyz;
 
-	float mask = texture(glow_map, UV).r;
-	vec3 colour = mix(glow_low, glow_high, smoothstep(height_low, height_high, height));
+	float mask = linear_in(texture(glow_map, UV).r);
+	vec3 colour = mix(linear_in(glow_low), linear_in(glow_high), smoothstep(height_low, height_high, height));
 	// A slow wave travels along the painted phase, so the glow flows instead of blinking.
 	float wave = 0.5 + 0.5 * sin(TIME * pulse_speed * TAU - phase * TAU * 1.5);
 	float pulse = mix(0.6, 1.0, wave);
 	float brightness = mix(1.0, day_glow, day_amount);
-	EMISSION = colour * mask * mix(0.55, 1.0, glow_weight) * pulse * glow_strength * brightness;
+	EMISSION = linear_out(colour * mask * mix(0.55, 1.0, glow_weight) * pulse * glow_strength * brightness);
 }
 
 // Same full-precision replacement for Godot's built-in light maths as the water uses: the

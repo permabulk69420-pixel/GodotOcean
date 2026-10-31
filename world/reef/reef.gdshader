@@ -4,6 +4,7 @@ shader_type spatial;
 // glow mask lights up at night in each coral's own hue mixed with a bioluminescent teal.
 render_mode cull_disabled;
 #include "res://world/ocean/shaders/underwater_light.gdshaderinc"
+#include "res://world/shaders/colour_space.gdshaderinc"
 
 uniform sampler2D albedo_map : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
 uniform sampler2D normal_map : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
@@ -54,13 +55,13 @@ void vertex() {
 
 void fragment() {
 	caustic = caustic_light(world_pos, TIME);
-	vec3 base = texture(albedo_map, UV).rgb;
+	vec3 base = linear_in(texture(albedo_map, UV).rgb);
 	// Kelp (high sway weight) keeps its own green; coral gets the patch tint.
 	float tintable = tint_strength * (1.0 - smoothstep(0.1, 0.45, vcolour.b));
 	vec3 tint = mix(vec3(1.0), patch_tint(hash21(floor(world_pos.xz / patch_size))), tintable);
 	vec3 albedo = base * tint;
 	float closeness = 1.0 - smoothstep(1.5, near_colour_distance, length(world_pos - CAMERA_POSITION_WORLD));
-	ALBEDO = min(albedo * mix(vec3(1.0), near_colour_boost, closeness * day_amount), vec3(0.95));
+	ALBEDO = linear_out(min(albedo * mix(vec3(1.0), near_colour_boost, closeness * day_amount), vec3(0.95)));
 	vec4 orm = texture(orm_map, UV);
 	AO = orm.r;
 	ROUGHNESS = orm.g;
@@ -70,7 +71,7 @@ void fragment() {
 	NORMAL_MAP = vec3(texture(normal_map, UV).xy, 0.5);
 	NORMAL_MAP.z = 0.5 + 0.5 * sqrt(max(1.0 - dot(NORMAL_MAP.xy * 2.0 - 1.0, NORMAL_MAP.xy * 2.0 - 1.0), 0.0));
 
-	float mask = texture(glow_map, UV).r;
+	float mask = linear_in(texture(glow_map, UV).r);
 	float m = max(albedo.r, max(albedo.g, albedo.b));
 	vec3 hue = albedo / max(m, 0.001);
 	// At night the glow leans towards bioluminescent teal; by day it is just the coral's own colour.
@@ -78,7 +79,7 @@ void fragment() {
 	float wave2 = 0.5 + 0.5 * sin(TIME * pulse_speed * TAU - (vcolour.g * 3.0 + hash21(floor(world_pos.xz * 0.7)) * 4.0));
 	float pulse = mix(0.55, 1.0, wave2);
 	float brightness = mix(1.0, day_glow, day_amount);
-	EMISSION = glow_colour * mask * mix(0.5, 1.0, vcolour.r) * pulse * glow_strength * brightness;
+	EMISSION = linear_out(glow_colour * mask * mix(0.5, 1.0, vcolour.r) * pulse * glow_strength * brightness);
 }
 
 // Full-precision replacement for the built-in light maths (see the water shader): the headset

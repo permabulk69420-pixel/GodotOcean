@@ -16,7 +16,8 @@ var phase_data := PackedVector2Array()
 var horizontal_scale := 0.0
 var material: ShaderMaterial
 var surface: MeshInstance3D
-var wave_cache: AbyssWaveCache
+## AbyssWaveCache (compute shader) on Vulkan; AbyssWaveCacheGL (a 2D pass) on the Compatibility renderer.
+var wave_cache: RefCounted
 var detail_normal_texture: NoiseTexture2D
 var detail_texture: NoiseTexture2D
 ## The sky seen through the window overhead from under the water, for underside.gdshader.
@@ -63,7 +64,11 @@ func _ready() -> void:
 	surface.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	surface.custom_aabb = AABB(Vector3(-4096, -24, -4096), Vector3(8192, 48, 8192))
 	add_child(surface)
-	wave_cache = AbyssWaveCache.new()
+	if RenderingServer.get_rendering_device():
+		wave_cache = AbyssWaveCache.new()
+	else:
+		wave_cache = AbyssWaveCacheGL.new()
+		wave_cache.host = self
 	var vertices: PackedVector3Array = surface.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	var packed := PackedFloat32Array()
 	for v in vertices: packed.append_array(PackedFloat32Array([v.x,v.z,0,0]))

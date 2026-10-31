@@ -3,6 +3,7 @@ shader_type spatial;
 // particle: they drift in a cube that wraps around the camera and flare up near recent
 // positions of the hands, thrusters and head (the trail array).
 render_mode blend_add, unshaded, cull_disabled, depth_draw_never, fog_disabled, skip_vertex_transform;
+#include "res://world/shaders/colour_space.gdshaderinc"
 
 const int TRAIL_COUNT = 64;
 uniform vec3 centre = vec3(0.0);
@@ -75,6 +76,6 @@ void fragment() {
 	float r2 = dot(c, c);
 	// A tight bright core with a faint halo reads as a point of light.
 	float core = exp(-r2 * 9.0) + 0.18 * exp(-r2 * 2.5);
-	ALBEDO = tint * min(brightness, 1.6);
+	ALBEDO = linear_out(linear_in(tint) * min(brightness, 1.6));
 	ALPHA = clamp(core, 0.0, 1.0) * (1.0 - smoothstep(0.7, 1.0, r2));
 }

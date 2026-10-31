@@ -4,6 +4,7 @@ shader_type spatial;
 // GPU time on the Quest; Vulkan validation shows no new errors without it.
 render_mode world_vertex_coords;
 #include "res://world/ocean/shaders/underwater_light.gdshaderinc"
+#include "res://world/shaders/colour_space.gdshaderinc"
 // Equipment shares this draw layout so Mobile never switches incompatible
 // specialized shader layouts between terrain, skinned palms and held tools.
 uniform int surface_kind = 0;
@@ -58,9 +59,9 @@ void fragment() {
  if (surface_kind > 0) {
   // Procedural housings have no texture UVs. Only the imported skin samples
   // UV textures; sampling a missing UV channel produces undefined derivatives.
-  ALBEDO = tint.rgb;
+  ALBEDO = linear_in(tint.rgb);
   if (surface_kind == 2) {
-   ALBEDO *= texture(colour_map, UV * uv_scale).rgb;
+   ALBEDO *= linear_in(texture(colour_map, UV * uv_scale).rgb);
    vec3 detail = texture(normal_map, UV * uv_scale).rgb * 2.0 - 1.0;
    detail.xy *= normal_strength;
    // Derive the skin's cotangent frame from the posed surface. Equipment and
@@ -96,7 +97,7 @@ void fragment() {
  vec3 top_colour = vec3(0.0);
  vec3 top_n = n;
  if (flat_amount > 0.002) {
-  top_colour = textureGrad(ground_colour, top_uv, top_dx, top_dy).rgb;
+  top_colour = linear_in(textureGrad(ground_colour, top_uv, top_dx, top_dy).rgb);
   if (normal_detail > 0.001) {
    vec3 t = unpack_normal(textureGrad(ground_normal, top_uv, top_dx, top_dy), ground_normal_strength);
    // Whiteout blend onto the world normal; level ground is projected from above.
@@ -107,7 +108,7 @@ void fragment() {
  vec3 side_colour = vec3(0.0);
  vec3 side_n = n;
  if (flat_amount < 0.998) {
-  side_colour = textureGrad(ground_colour, side_uv, side_dx, side_dy).rgb;
+  side_colour = linear_in(textureGrad(ground_colour, side_uv, side_dx, side_dy).rgb);
   if (normal_detail > 0.001) {
    vec3 t = unpack_normal(textureGrad(ground_normal, side_uv, side_dx, side_dy), ground_normal_strength);
    if (along_x) {
@@ -132,6 +133,7 @@ void fragment() {
  // No caustics where the baked sun visibility says the seabed is in shade.
  caustic = mix(1.0, caustic, sunlight);
  }
+ ALBEDO = linear_out(ALBEDO);
  specular_level = SPECULAR;
 }
 

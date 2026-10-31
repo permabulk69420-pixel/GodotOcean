@@ -29,6 +29,7 @@
 /**************************************************************************/
 
 
+#include "res://world/shaders/colour_space.gdshaderinc"
 uniform vec3 sky_sun_direction=vec3(0.0,0.53,0.85);
 uniform vec3 sky_rayleigh_color : source_color=vec3(0.3,0.405,0.6);
 uniform vec3 sky_mie_color : source_color=vec3(0.69,0.729,0.812);
@@ -46,8 +47,8 @@ vec3 sky_radiance(float up, float cosine) {
  float sun_zenith=clamp(sky_sun_direction.y,-1.0,1.0);
  float energy=max(0.0,0.757*sun_zenith)*1.6;
  float fade=1.0-clamp(1.0-exp(sky_sun_direction.y),0.0,1.0);
- vec3 beta_r=(2.0-(1.0-fade))*sky_rayleigh_color*0.0001;
- vec3 beta_m=10.0*0.003*sky_mie_color*0.000434;
+ vec3 beta_r=(2.0-(1.0-fade))*linear_in(sky_rayleigh_color)*0.0001;
+ vec3 beta_m=10.0*0.003*linear_in(sky_mie_color)*0.000434;
  float zenith=max(0.0,up);
  float mass=1.0/(zenith+0.15*pow(3.885+54.5*zenith,-1.253));
  vec3 extinction=exp(-(beta_r*8400.0*mass+beta_m*1250.0*mass));
@@ -56,11 +57,11 @@ vec3 sky_radiance(float up, float cosine) {
  vec3 incident=energy*(beta_r*phase_r+beta_m*phase_m)/(beta_r+beta_m);
  vec3 scattering=pow(incident*(1.0-extinction),vec3(1.5));
  scattering*=mix(vec3(1.0),pow(incident*extinction,vec3(0.5)),clamp(pow(1.0-sun_zenith,5.0),0.0,1.0));
- scattering*=mix(sky_ground_color,vec3(1.0),smoothstep(-0.1,0.1,up));
+ scattering*=mix(linear_in(sky_ground_color),vec3(1.0),smoothstep(-0.1,0.1,up));
  // No separate sun disk: the Mie glow from phase_m already marks the sun, and the disk's
  // tiny thresholds were the suspected cause of a black square on the headset. NaN/Inf
  // are zeroed so a bad sample can never blank pixels.
- vec3 color=scattering+sky_night_color*(1.0-day_amount)*smoothstep(-0.1,0.1,up);
+ vec3 color=scattering+linear_in(sky_night_color)*(1.0-day_amount)*smoothstep(-0.1,0.1,up);
  if (any(isnan(color)) || any(isinf(color))) color=vec3(0.0);
  return pow(clamp(color,vec3(0.0),vec3(64.0)),vec3(1.0/(1.2+1.2*fade)));
 }

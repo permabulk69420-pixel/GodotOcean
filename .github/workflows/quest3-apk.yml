@@ -49,6 +49,15 @@ jobs:
             echo "APP_NAME=Abyss Ocean ${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
             echo "RELEASE_TITLE=Abyss Ocean — ${GITHUB_REF_NAME} (Godot 4.7.2)" >> "$GITHUB_ENV"
           fi
+          # An OpenGL (Compatibility renderer) build is a different app again, so it installs beside the Vulkan ones.
+          if grep -q '^renderer/rendering_method.android="gl_compatibility"' project.godot; then
+            sed -i -E '/^(RELEASE_TAG|PACKAGE_SUFFIX|APP_NAME|RELEASE_TITLE)=/d' "$GITHUB_ENV"
+            [ "$GITHUB_REF_NAME" = "ccr-godot-472-test" ] && base=abyss-godot-472-test || base="abyss-test-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+            echo "RELEASE_TAG=${base}-opengl" >> "$GITHUB_ENV"
+            echo "PACKAGE_SUFFIX=gl$(printf '%s' "$GITHUB_REF_NAME" | tr -cd 'A-Za-z0-9')" >> "$GITHUB_ENV"
+            echo "APP_NAME=Abyss Ocean OpenGL ${GITHUB_REF_NAME}" >> "$GITHUB_ENV"
+            echo "RELEASE_TITLE=Abyss Ocean — ${GITHUB_REF_NAME} (Godot 4.7.2, OpenGL)" >> "$GITHUB_ENV"
+          fi
 
       - uses: actions/setup-java@v4
         with:

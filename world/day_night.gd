@@ -115,6 +115,7 @@ func apply(sun: DirectionalLight3D, sky_sun: DirectionalLight3D, surface: Enviro
 	apply_environment(surface, SURFACE_DAY, SURFACE_NIGHT)
 	apply_environment(underwater, UNDERWATER_DAY, UNDERWATER_NIGHT)
 	apply_depth(underwater, depth)
+	if not RenderingServer.get_rendering_device(): underwater.fog_light_color = gl_underwater_fog(depth)
 	water.set_shader_parameter("sky_sun_direction", sun_direction)
 	water.set_shader_parameter("sky_sun_color", sun_colour)
 	water.set_shader_parameter("day_amount", daylight)
@@ -142,6 +143,20 @@ func update_underwater_sky(material: ShaderMaterial, depth: float) -> void:
 	if absf(stepped_depth - underwater_sky_depth) > 0.01:
 		underwater_sky_depth = stepped_depth
 		material.set_shader_parameter("depth", stepped_depth)
+
+## The Compatibility (OpenGL) renderer has no aerial perspective, so the underwater fog cannot take its colour from the
+## underwater sky as it does on Vulkan; it uses this instead: what that sky gives the fog looking level (the colour of
+## underwater_water_colour() in world/ocean/shaders/underwater_water.gdshaderinc, blurred, at the half brightness the
+## Mobile renderer reads it at), from the same constants.
+func gl_underwater_fog(depth: float) -> Color:
+	var level := Vector3(0.045, 0.23, 0.28)
+	# The haze around the sun, averaged over the directions you can look in.
+	var water := level + Vector3(0.60, 0.85, 0.70) * 0.16 * 0.212
+	var below := maxf(depth, 0.0)
+	water *= Vector3(exp(-below * 0.065), exp(-below * 0.042), exp(-below * 0.032))
+	var night := Vector3(0.0004, 0.0016, 0.0038) * exp(-below * 0.04)
+	var fog := night.lerp(water, daylight) * 0.5
+	return Color(fog.x, fog.y, fog.z).linear_to_srgb()
 
 ## Tint a light colour the way the water does: the deeper you are, the more red is lost.
 func absorb(colour: Color, depth: float) -> Color:

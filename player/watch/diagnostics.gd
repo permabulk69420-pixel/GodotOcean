@@ -83,6 +83,7 @@ func values(viewport: Viewport, game: Node, target: float) -> Dictionary:
 		seabed = ['Auto', 'No terrain', 'No reef', 'No seagrass', 'Hidden'][game.get('seabed_test')]
 	var xr := XRServer.primary_interface
 	var strength = xr.get('vrs_strength') if xr != null else null
+	var level = xr.get('foveation_level') if xr != null else null
 	var rows := {
 		'FPS': '%.0f  (of %.0f)' % [fps, target],
 		'Frame time': '%.1f ms' % average_ms,
@@ -103,6 +104,7 @@ func values(viewport: Viewport, game: Node, target: float) -> Dictionary:
 		'Y  Seabed': seabed,
 		'L-stick  Texture filter': ['Off', '2x', '4x', '8x', '16x'][viewport.anisotropic_filtering_level],
 		'R-stick  Terrain pass': terrain_pass,
-		'Foveation': ('x%.1f' % float(strength)) if strength != null and viewport.vrs_mode == Viewport.VRS_XR else 'Off',
+		'Foveation': ('x%.1f' % float(strength)) if strength != null and viewport.vrs_mode == Viewport.VRS_XR \
+			else ('Level %d' % int(level)) if level != null and int(level) > 0 and RenderingServer.get_rendering_device() == null else 'Off',
 	}
 	return rows

@@ -12,6 +12,7 @@ const XR_LOD_THRESHOLD := 3.0
 const UNDERWATER_FAR := 150.0
 const UNDERWATER_SKY_SHADER := preload("res://world/ocean/shaders/underwater_sky.gdshader")
 const WATER_UNDERSIDE_SHADER := preload("res://world/ocean/shaders/underside.gdshader")
+const PHYSICAL_SKY_GL_SHADER := preload("res://world/physical_sky_gl.gdshader")
 
 @onready var ocean: AbyssOcean = $Ocean
 @onready var player: AbyssSwimmer = $Player
@@ -68,6 +69,7 @@ func _ready() -> void:
 	player.terrain = terrain
 	ocean.wave_cache.start()
 	surface_environment = world.environment
+	if not RenderingServer.get_rendering_device(): use_gl_sky(surface_environment.sky)
 	underwater_environment = surface_environment.duplicate(true)
 	# Under the water the "sky" is the water itself: a gradient from bright above to dark below
 	# (world/ocean/shaders/underwater_sky.gdshader). The fog takes its colour from it (aerial
@@ -96,13 +98,18 @@ func _ready() -> void:
 	if not xr or not xr.is_initialized(): xr = XRServer.find_interface("OpenXR")
 	if xr and (xr.is_initialized() or (OS.has_feature("android") and xr.initialize())):
 		get_viewport().use_xr = true
-		# Mobile Vulkan uses XR variable-rate shading for fixed foveated rendering.
-		get_viewport().vrs_mode = Viewport.VRS_XR
 		get_viewport().scaling_3d_scale = XR_RENDER_SCALE
 		get_viewport().mesh_lod_threshold = XR_LOD_THRESHOLD
-		# On the Mobile renderer the foveation is tuned here (foveation_level is Compatibility-only).
-		# The default strength is 1.0; higher shades more of the outer view coarsely.
-		if "vrs_strength" in xr: xr.set("vrs_strength", 2.0)
+		if RenderingServer.get_rendering_device():
+			# Mobile Vulkan uses XR variable-rate shading for fixed foveated rendering.
+			get_viewport().vrs_mode = Viewport.VRS_XR
+			# The default strength is 1.0; higher shades more of the outer view coarsely.
+			if "vrs_strength" in xr: xr.set("vrs_strength", 2.0)
+		else:
+			# The Compatibility (OpenGL) renderer uses the headset's own fixed foveation instead: 3 is the strongest,
+			# the nearest to the Vulkan strength above. Not dynamic, so it does not change under the performance tests.
+			if "foveation_level" in xr: xr.set("foveation_level", 3)
+			if "foveation_dynamic" in xr: xr.set("foveation_dynamic", false)
 		if xr.has_method("get_available_display_refresh_rates"):
 			var rates = xr.get_available_display_refresh_rates()
 			if rates.has(XR_REFRESH_RATE): xr.set_display_refresh_rate(XR_REFRESH_RATE)
@@ -119,6 +126,24 @@ func _ready() -> void:
 	else:
 		camera.position.y = 1.6
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+## The Compatibility (OpenGL) renderer cannot draw the built-in PhysicalSkyMaterial in the right colours (see
+## world/physical_sky_gl.gdshader), so there the same sky is drawn by a copy of its shader with the same settings.
+func use_gl_sky(sky: Sky) -> void:
+	var physical := sky.sky_material as PhysicalSkyMaterial
+	if physical == null: return
+	var copy := ShaderMaterial.new()
+	copy.shader = PHYSICAL_SKY_GL_SHADER
+	copy.set_shader_parameter("rayleigh", physical.rayleigh_coefficient)
+	copy.set_shader_parameter("rayleigh_color", physical.rayleigh_color)
+	copy.set_shader_parameter("mie", physical.mie_coefficient)
+	copy.set_shader_parameter("mie_eccentricity", physical.mie_eccentricity)
+	copy.set_shader_parameter("mie_color", physical.mie_color)
+	copy.set_shader_parameter("turbidity", physical.turbidity)
+	copy.set_shader_parameter("sun_disk_scale", physical.sun_disk_scale)
+	copy.set_shader_parameter("ground_color", physical.ground_color)
+	copy.set_shader_parameter("exposure", physical.energy_multiplier)
+	sky.sky_material = copy
 
 func connect_xr_lifecycle(interface: XRInterface) -> void:
 	interface.connect(&"session_visible", _on_visible)
@@ -157,6 +182,7 @@ func _process(delta: float) -> void:
 	if not cache_bound and ocean.wave_cache.ready:
 		ocean.material.set_shader_parameter("cached_displacement",ocean.wave_cache.displacement)
 		ocean.material.set_shader_parameter("cached_normals",ocean.wave_cache.normals)
+		ocean.material.set_shader_parameter("cached_normal_row",ocean.wave_cache.normal_row)
 		ocean.material.set_shader_parameter("cache_ready",true)
 		cache_bound=true
 

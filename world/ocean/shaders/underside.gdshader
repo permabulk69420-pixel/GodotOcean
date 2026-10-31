@@ -11,12 +11,14 @@ shader_type spatial;
 // - Nothing from above the water: no foam, whitecaps, reflections or mirrored glints of the mushroom's cap.
 render_mode world_vertex_coords, cull_disabled, depth_draw_opaque, unshaded;
 #include "res://world/ocean/shaders/underwater_water.gdshaderinc"
+#include "res://world/shaders/colour_space.gdshaderinc"
 
 // Shared with surface.gdshader (same names, so switching shaders keeps the values ocean.gd, day_night.gd and mushroom.gd set).
 uniform float simulation_time;
 uniform sampler2D cached_displacement : filter_nearest;
 uniform sampler2D cached_normals : filter_nearest;
 uniform bool cache_ready = false;
+uniform int cached_normal_row = 0;
 uniform sampler2D detail_normals : repeat_enable, filter_linear_mipmap;
 uniform vec3 absorption = vec3(0.28, 0.065, 0.028);
 uniform vec3 deep_color : source_color = vec3(0.008, 0.055, 0.085);
@@ -51,7 +53,7 @@ varying float crest_height;
 void vertex() {
 	ivec2 cache_pixel = ivec2(VERTEX_ID % 1024, VERTEX_ID / 1024);
 	vec3 displacement = cache_ready ? texelFetch(cached_displacement, cache_pixel, 0).xyz : vec3(0.0);
-	vec3 wave_normal = cache_ready ? texelFetch(cached_normals, cache_pixel, 0).xyz : vec3(0.0, 1.0, 0.0);
+	vec3 wave_normal = cache_ready ? texelFetch(cached_normals, cache_pixel + ivec2(0, cached_normal_row), 0).xyz : vec3(0.0, 1.0, 0.0);
 	VERTEX += displacement;
 	ocean_position = VERTEX;
 	ocean_normal = wave_normal;
@@ -59,6 +61,11 @@ void vertex() {
 }
 
 void fragment() {
+	vec3 deep_color_lin = linear_in(deep_color);
+	vec3 shallow_color_lin = linear_in(shallow_color);
+	vec3 glow_low_lin = linear_in(glow_low);
+	vec3 glow_high_lin = linear_in(glow_high);
+	vec3 sky_sun_color_lin = linear_in(sky_sun_color);
 	vec3 eye_vector = CAMERA_POSITION_WORLD - ocean_position;
 	float eye_distance = max(length(eye_vector), 0.0001);
 	vec3 eye_direction = eye_vector / eye_distance;
@@ -67,7 +74,7 @@ void fragment() {
 	vec3 colour;
 	if (FRONT_FACING) {
 		// The top of the surface only shows from under the water for a moment while the head crosses it.
-		vec3 scatter = mix(shallow_color, deep_color, 1.0 - exp(-200.0 * 0.045));
+		vec3 scatter = mix(shallow_color_lin, deep_color_lin, 1.0 - exp(-200.0 * 0.045));
 		colour = scatter * (1.0 - exp(-absorption * 200.0)) * light_level;
 	} else {
 		vec3 normal = ocean_normal;
@@ -83,7 +90,7 @@ void fragment() {
 		// up); outside it the surface acts as a mirror and shows the water below.
 		float window = smoothstep(0.63, 0.75, dot(world_normal, eye_direction));
 		// At night the mirrored part keeps the faint teal it always had.
-		colour = mix(shallow_color * 0.35 * 0.035, underwater_water_colour(reflect(-eye_direction, world_normal), sky_sun_direction, 1.0, 1.5, 0.0), day_amount);
+		colour = mix(shallow_color_lin * 0.35 * 0.035, underwater_water_colour(reflect(-eye_direction, world_normal), sky_sun_direction, 1.0, 1.5, 0.0), day_amount);
 		if (window > 0.0) {
 			vec3 air = refract(-eye_direction, world_normal, 1.333);
 			vec3 sky_through = vec3(0.0);
@@ -96,11 +103,11 @@ void fragment() {
 				// The sun's disc and the glare around it, from one logarithm.
 				float closeness = log2(max(toward_sun, 0.000001));
 				float sun_up = smoothstep(-0.05, 0.2, sky_sun_direction.y);
-				sky_through += sky_sun_color * (sun_up * underside_sun_glare) * (exp2(closeness * 900.0) * 8.0 + exp2(closeness * 60.0) * 0.25);
+				sky_through += sky_sun_color_lin * (sun_up * underside_sun_glare) * (exp2(closeness * 900.0) * 8.0 + exp2(closeness * 60.0) * 0.25);
 			}
 			colour = mix(colour, sky_through, window);
 		}
-		colour += shallow_color * max(crest_height, 0.0) * 0.12 * light_level;
+		colour += shallow_color_lin * max(crest_height, 0.0) * 0.12 * light_level;
 		if (glow_strength > 0.0) {
 			vec3 to_source = glow_source - ocean_position;
 			float spread = length(to_source.xz);
@@ -111,10 +118,10 @@ void fragment() {
 				float pool = exp(-pow(spread / glow_radius, 2.0));
 				float core = exp(-spread / (glow_radius * 0.2));
 				float wave = 0.5 + 0.5 * sin(TAU * fract(TIME * glow_pulse_speed) - spread * 0.05);
-				vec3 spill = (glow_high * pool * 0.10 + glow_low * core * 0.35) * mix(0.6, 1.0, wave);
+				vec3 spill = (glow_high_lin * pool * 0.10 + glow_low_lin * core * 0.35) * mix(0.6, 1.0, wave);
 				colour += spill * glow_strength * mix(1.0, glow_day, day_amount);
 			}
 		}
 	}
-	ALBEDO = colour;
+	ALBEDO = linear_out(colour);
 }

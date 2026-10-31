@@ -6,6 +6,7 @@ shader_type sky;
 // ambient light and shows in reflections. day_night.gd sets day_amount and depth a couple of
 // times a second (every change makes Godot refilter the sky, so it is not done every frame).
 #include "res://world/ocean/shaders/underwater_water.gdshaderinc"
+#include "res://world/shaders/colour_space.gdshaderinc"
 
 // 0 at night, 1 in full day.
 uniform float day_amount = 1.0;
@@ -20,8 +21,8 @@ void sky() {
 	// The lighting copy (cubemap pass) is what Godot blurs for the fog. What is drawn on screen is
 	// pre-blurred and scaled to match, so fogged scenery and open water meet without a seam.
 	if (AT_CUBEMAP_PASS) {
-		COLOR = underwater_water_colour(EYEDIR, LIGHT0_DIRECTION, day_amount, depth, 0.0);
+		COLOR = linear_out(underwater_water_colour(EYEDIR, LIGHT0_DIRECTION, day_amount, depth, 0.0));
 	} else {
-		COLOR = underwater_water_colour(EYEDIR, LIGHT0_DIRECTION, day_amount, depth, 1.0) * drawn_brightness;
+		COLOR = linear_out(underwater_water_colour(EYEDIR, LIGHT0_DIRECTION, day_amount, depth, 1.0) * drawn_brightness);
 	}
 }
