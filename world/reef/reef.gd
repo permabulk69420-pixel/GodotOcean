@@ -11,7 +11,6 @@ const ROCK_SHADER := preload('res://world/reef/rock.gdshader')
 const ROCK_COLOUR := preload('res://world/terrain/textures/rock_colour.jpg')
 const ROCK_NORMAL := preload('res://world/terrain/textures/rock_normal.jpg')
 const CELL := 32.0
-const VIEW_DISTANCE := 60.0
 const SET_PIECE_VIEW_DISTANCE := 120.0
 
 # kind: 'rock' uses the terrain's rock material; 'coral' uses the reef material.
@@ -95,7 +94,8 @@ func _ready() -> void:
 			instance.mesh = merge(cells[kind][cell], kind == 'rock')
 			instance.material_override = rock_material if kind == 'rock' else coral_material
 			instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			instance.visibility_range_end = VIEW_DISTANCE
+			# Do not distance-cull glowing reef vegetation; the camera frustum and
+			# underwater far clip already limit what's rendered.
 			add_child(instance)
 	for index in range(set_pieces.size()):
 		place_set_pieces(index, set_pieces[index], generator, mushroom, half, rng, rock_material)
