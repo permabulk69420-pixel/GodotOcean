@@ -49,6 +49,9 @@ var moon_energy := 0.0
 var sun_colour := DAY_SUN_COLOUR
 var sky_timer := 0.0
 var underwater_sky_day := -1.0
+## Temporary A/B performance test: keep sky-radiance depth fixed while swimming.
+## Fog, light attenuation, the water surface and time-of-day still change normally.
+const FREEZE_SKY_DEPTH_FOR_TEST := true
 var underwater_sky_depth := -1.0
 
 func _ready() -> void:
@@ -140,7 +143,9 @@ func update_underwater_sky(material: ShaderMaterial, depth: float) -> void:
 	if absf(daylight - underwater_sky_day) > 0.01 or (daylight != underwater_sky_day and (daylight == 0.0 or daylight == 1.0)):
 		underwater_sky_day = daylight
 		material.set_shader_parameter("day_amount", daylight)
-	if absf(stepped_depth - underwater_sky_depth) > 0.01:
+	# Initialize once at the starting depth (0 m), then do not trigger costly
+	# sky-light refiltering for each 25 cm of vertical motion in this test.
+	if underwater_sky_depth < 0.0 or (not FREEZE_SKY_DEPTH_FOR_TEST and absf(stepped_depth - underwater_sky_depth) > 0.01):
 		underwater_sky_depth = stepped_depth
 		material.set_shader_parameter("depth", stepped_depth)
 
