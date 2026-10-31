@@ -2,6 +2,8 @@ extends Node3D
 
 signal submerged_changed(submerged: bool)
 
+## Render scale for the headset: the Quest's default is more pixels than this scene's shaders can fill at 72 Hz.
+const XR_RENDER_SCALE := 0.8
 const UNDERWATER_SKY_SHADER := preload("res://world/ocean/shaders/underwater_sky.gdshader")
 
 @onready var ocean: AbyssOcean = $Ocean
@@ -27,7 +29,10 @@ var xr: XRInterface
 var xr_focused := false
 var submerged := false
 var seabed_shown := true
-var seabed_test_hidden := false
+## The watch's performance test steps this: 0 everything shown, 1 no terrain, 2 no reef, 3 no seagrass, 4 none of them.
+var seabed_test := 0
+## True while the watch panel is open, so the time of day stays put while its numbers are read.
+var freeze_time := false
 var depth := 0.0
 var surface_environment: Environment
 var underwater_environment: Environment
@@ -70,6 +75,7 @@ func _ready() -> void:
 		get_viewport().use_xr = true
 		# Mobile Vulkan uses XR variable-rate shading for fixed foveated rendering.
 		get_viewport().vrs_mode = Viewport.VRS_XR
+		get_viewport().scaling_3d_scale = XR_RENDER_SCALE
 		# On the Mobile renderer the foveation is tuned here (foveation_level is Compatibility-only).
 		# The default strength is 1.0; higher shades more of the outer view coarsely.
 		if "vrs_strength" in xr: xr.set("vrs_strength", 2.0)
@@ -106,7 +112,7 @@ func _on_stopping() -> void:
 	get_tree().paused = true
 
 func _process(delta: float) -> void:
-	day_night.advance(delta)
+	if not freeze_time: day_night.advance(delta)
 	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, terrain.material, delta, maxf(player.head_depth, 0.0) if submerged else 0.0, underwater_sky)
 	var sources := PackedVector3Array([camera.global_position, left_controller.global_position, right_controller.global_position])
 	var boosts := PackedFloat32Array([0.0, 0.0, 0.0])
@@ -149,16 +155,14 @@ func update_water_state() -> void:
 	var energy := day_night.light_energy() * (exp(-maxf(depth, 0.0) * 0.02) if submerged else 1.0)
 	if not is_equal_approx(sun.light_energy,energy): sun.light_energy=energy
 
-## The watch's performance test can hide the seabed outright, whatever the water state says.
-func set_seabed_test_hidden(hidden: bool) -> void:
-	seabed_test_hidden = hidden
+func set_seabed_test(mode: int) -> void:
+	seabed_test = mode
 	apply_seabed_visibility()
 
 func apply_seabed_visibility() -> void:
-	var show := seabed_shown and not seabed_test_hidden
-	terrain.visible = show
-	reef.visible = show
-	seagrass.visible = show
+	terrain.visible = seabed_shown and seabed_test != 1 and seabed_test != 4
+	reef.visible = seabed_shown and seabed_test != 2 and seabed_test != 4
+	seagrass.visible = seabed_shown and seabed_test != 3 and seabed_test != 4
 
 func release_depth() -> void:
 	if is_instance_valid(ocean) and ocean.wave_cache: ocean.wave_cache.release()

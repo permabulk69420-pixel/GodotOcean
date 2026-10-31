@@ -33,7 +33,6 @@ var detail: Label
 var index_bones: Array[int] = []
 var armed := true
 var key_was := false
-var scale_step := 0
 var test_was := [false, false, false, false]
 var since_refresh := 0.0
 
@@ -126,28 +125,33 @@ func toggle_menu() -> void:
 		# The water and seabed tests are only for reading the numbers; put them back when the panel goes away.
 		if get_parent().get('ocean') != null:
 			get_parent().ocean.surface.visible = true
-			get_parent().set_seabed_test_hidden(false)
+			get_parent().set_seabed_test(0)
+			get_parent().freeze_time = false
 	else:
 		menu.open(head.global_transform)
+		if get_parent().get('ocean') != null: get_parent().freeze_time = true
 		refresh()
 	# GPU and CPU render times are only measured while the panel is up.
 	RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), menu.is_open)
 
 ## The performance tests, run from the panel while it is open: 0 render scale (A), 1 anti-aliasing (B), 2 water
-## surface (X), 3 seabed (Y). Render scale and anti-aliasing stay as set; the other two undo themselves on close.
+## surface (X), 3 seabed (Y: terrain, reef and seagrass one at a time). Render scale and anti-aliasing stay as set; the water and seabed
+## tests undo themselves on close, and the time of day is frozen while the panel is up.
 func press_test(index: int) -> void:
 	var game := get_parent()
 	var viewport := get_viewport()
 	match index:
 		0:
-			scale_step = (scale_step + 1) % SCALES.size()
-			viewport.scaling_3d_scale = SCALES[scale_step]
+			var nearest := 0
+			for i in range(SCALES.size()):
+				if absf(SCALES[i] - viewport.scaling_3d_scale) < absf(SCALES[nearest] - viewport.scaling_3d_scale): nearest = i
+			viewport.scaling_3d_scale = SCALES[(nearest + 1) % SCALES.size()]
 		1:
 			viewport.msaa_3d = ((viewport.msaa_3d + 1) % 3) as Viewport.MSAA
 		2:
 			if game.get('ocean') != null: game.ocean.surface.visible = not game.ocean.surface.visible
 		3:
-			if game.get('ocean') != null: game.set_seabed_test_hidden(not game.seabed_test_hidden)
+			if game.get('ocean') != null: game.set_seabed_test((game.seabed_test + 1) % 5)
 	show_panel_values()
 
 func show_panel_values() -> void:
