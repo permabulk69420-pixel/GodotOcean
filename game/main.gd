@@ -33,11 +33,11 @@ var seabed_shown := true
 var seabed_test := 0
 ## True while the watch panel is open, so the time of day stays put while its numbers are read.
 var freeze_time := false
-## The terrain shader writes ALPHA, which sends it down the transparent path (sorted far to near, blended, no early
-## depth rejection). The watch's performance test swaps in a copy drawn as a normal opaque surface to show what that costs.
-var terrain_opaque_test := false
+## The terrain is drawn as a normal opaque surface. The watch's performance test can swap the old version back in (it wrote
+## ALPHA, which sent it down the transparent path) to compare what that cost.
+var terrain_transparent_test := false
 var terrain_shader: Shader
-var terrain_opaque_shader: Shader
+var terrain_old_shader: Shader
 var depth := 0.0
 var surface_environment: Environment
 var underwater_environment: Environment
@@ -164,13 +164,13 @@ func set_seabed_test(mode: int) -> void:
 	seabed_test = mode
 	apply_seabed_visibility()
 
-func set_terrain_opaque_test(on: bool) -> void:
+func set_terrain_transparent_test(on: bool) -> void:
 	if terrain_shader == null:
 		terrain_shader = terrain.material.shader
-		terrain_opaque_shader = Shader.new()
-		terrain_opaque_shader.code = terrain_shader.code.replace('render_mode world_vertex_coords, depth_draw_always;', 'render_mode world_vertex_coords;').replace('ALPHA=1.0;', '')
-	terrain_opaque_test = on
-	terrain.material.shader = terrain_opaque_shader if on else terrain_shader
+		terrain_old_shader = Shader.new()
+		terrain_old_shader.code = terrain_shader.code.replace('render_mode world_vertex_coords;', 'render_mode world_vertex_coords, depth_draw_always;').replace(' specular_level = SPECULAR;', ' specular_level = SPECULAR;\n ALPHA=1.0;')
+	terrain_transparent_test = on
+	terrain.material.shader = terrain_old_shader if on else terrain_shader
 
 func apply_seabed_visibility() -> void:
 	terrain.visible = seabed_shown and seabed_test != 1 and seabed_test != 4

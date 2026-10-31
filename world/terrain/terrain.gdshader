@@ -1,8 +1,8 @@
 shader_type spatial;
-// Keep solid depth-writing terrain in Mobile's merged alpha draw list. This
-// rebinds the per-pass descriptors when switching from the ocean shader while
-// Godot asynchronously specializes pipelines. Coverage remains fully opaque.
-render_mode world_vertex_coords, depth_draw_always;
+// Drawn as a normal opaque surface: nearest first, with hidden ground rejected before it is shaded. It used to write
+// ALPHA to stay in Mobile's transparent draw list (far to near, blended, no early rejection), which cost about 6 ms of
+// GPU time on the Quest; Vulkan validation shows no new errors without it.
+render_mode world_vertex_coords;
 #include "res://world/ocean/shaders/underwater_light.gdshaderinc"
 uniform sampler2D grain : repeat_enable, filter_linear_mipmap_anisotropic;
 // Equipment shares this draw layout so Mobile never switches incompatible
@@ -162,7 +162,6 @@ void fragment() {
  caustic = mix(1.0, caustic, sunlight);
  }
  specular_level = SPECULAR;
- ALPHA=1.0;
 }
 
 // Full-precision lighting (the headset runs Godot's built-in version in half precision; see the

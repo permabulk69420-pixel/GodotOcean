@@ -79,7 +79,7 @@ func values(viewport: Viewport, game: Node, target: float) -> Dictionary:
 	var terrain_pass := NONE
 	if game != null and game.get('ocean') != null:
 		water_surface = 'On' if game.get('ocean').surface.visible else 'Hidden'
-		terrain_pass = 'Opaque' if game.get('terrain_opaque_test') else 'As built'
+		terrain_pass = 'Transparent (old)' if game.get('terrain_transparent_test') else 'Opaque'
 		seabed = ['Auto', 'No terrain', 'No reef', 'No seagrass', 'Hidden'][game.get('seabed_test')]
 	var xr := XRServer.primary_interface
 	var strength = xr.get('vrs_strength') if xr != null else null

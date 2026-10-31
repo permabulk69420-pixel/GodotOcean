@@ -127,7 +127,7 @@ func toggle_menu() -> void:
 		if get_parent().get('ocean') != null:
 			get_parent().ocean.surface.visible = true
 			get_parent().set_seabed_test(0)
-			get_parent().set_terrain_opaque_test(false)
+			get_parent().set_terrain_transparent_test(false)
 			get_parent().freeze_time = false
 	else:
 		menu.open(head.global_transform)
@@ -138,7 +138,7 @@ func toggle_menu() -> void:
 
 ## The performance tests, run from the panel while it is open: 0 render scale (A), 1 anti-aliasing (B), 2 water
 ## surface (X), 3 seabed (Y: terrain, reef and seagrass one at a time), 4 texture filtering (left stick click), 5 whether the
-## terrain is drawn as a normal opaque surface (right stick click). Render scale and anti-aliasing stay as set; the water and seabed
+## terrain is drawn the old transparent way (right stick click). Render scale and anti-aliasing stay as set; the water and seabed
 ## tests undo themselves on close, and the time of day is frozen while the panel is up.
 func press_test(index: int) -> void:
 	var game := get_parent()
@@ -161,7 +161,7 @@ func press_test(index: int) -> void:
 				if absi(FILTERS[i] - viewport.anisotropic_filtering_level) < absi(FILTERS[nearest_filter] - viewport.anisotropic_filtering_level): nearest_filter = i
 			viewport.anisotropic_filtering_level = FILTERS[(nearest_filter + 1) % FILTERS.size()] as Viewport.AnisotropicFiltering
 		5:
-			if game.get('ocean') != null: game.set_terrain_opaque_test(not game.terrain_opaque_test)
+			if game.get('ocean') != null: game.set_terrain_transparent_test(not game.terrain_transparent_test)
 	show_panel_values()
 
 func show_panel_values() -> void:
