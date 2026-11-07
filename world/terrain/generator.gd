@@ -1,8 +1,8 @@
 class_name AbyssTerrainGenerator
 extends RefCounted
-## Positive density is rock; negative density is water/air. Samples use world coordinates.
-const CORNERS := [Vector3i(0,0,0),Vector3i(1,0,0),Vector3i(1,1,0),Vector3i(0,1,0),Vector3i(0,0,1),Vector3i(1,0,1),Vector3i(1,1,1),Vector3i(0,1,1)]
-const TETRA := [[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6],[0,5,1,6]]
+## The shape of the world. Positive density is rock; negative density is water/air. Samples use world coordinates.
+## The bake (bake.gd) turns it into stored voxels; the game builds its meshes from those (mesher.gd).
+
 ## The most the cliff's crags move its face up or down (under 1.5 m sideways on the steep part). Much more than this
 ## carves pockets and holes into the face.
 const CRAG_DEPTH := 12.0
@@ -27,7 +27,6 @@ var routes: Array[PackedVector3Array] = []
 var entrances := PackedVector3Array()
 var chamber := Vector3.ZERO
 var network_bounds := AABB()
-var sun_direction := Vector3(0.3584,0.5299,-0.7685).normalized()
 
 func _init(config: AbyssTerrainSettings = null) -> void:
 	settings=config if config else AbyssTerrainSettings.new()
@@ -172,66 +171,6 @@ func smooth_union(a: float,b: float,width: float) -> float:
 	var h:=clampf(0.5+0.5*(b-a)/width,0,1)
 	return lerpf(b,a,h)-width*h*(1.0-h)
 
-func normal(p: Vector3, subset: PackedInt32Array) -> Vector3:
-	var e:=0.12
-	return -Vector3(density(p+Vector3(e,0,0),subset,false)-density(p-Vector3(e,0,0),subset,false),density(p+Vector3(0,e,0),subset,false)-density(p-Vector3(0,e,0),subset,false),density(p+Vector3(0,0,e),subset,false)-density(p-Vector3(0,0,e),subset,false)).normalized()
-
-func lighting(p: Vector3,n: Vector3, subset: PackedInt32Array) -> Color:
-	var visibility:=1.0
-	var distance:=0.18
-	# Static sun occlusion is baked into the mesh instead of rendering shadow maps every eye/frame.
-	# Deeper than this the march could not reach the surface, and the water has all but absorbed the sun anyway.
-	for i in range(28 if p.y> -64.0 else 0):
-		var q:=p+n*0.15+sun_direction*distance
-		if q.y> -2.0: break
-		var field: float=density(q)
-		if field>0.03:
-			visibility=0.0
-			break
-		distance+=clampf(-field*0.7,0.35,4.0)
-	var ao:=1.0
-	for r in [0.7,1.7,3.2]:
-		var clearance: float=-density(p+n*r,subset,false)
-		ao-=maxf(0.0,r-clearance)/r*0.19
-	var sand:=smoothstep(0.35,0.86,n.y)
-	return Color(sand,visibility,clampf(ao,0.16,1.0),1)
-
-## The density on the plane x = coarse_from as the coarse chunks there see it: their 2 m samples, joined in straight lines
-## across the same triangles their faces are cut into (the diagonal runs from low y and z to high y and z). Fine triangles
-## lie inside those, so the fine side's surface meets the plane exactly where the coarse side's does.
-func coarse_face_density(p: Vector3) -> float:
-	var step:=settings.voxel_size*2.0
-	var y0:=floorf(p.y/step)*step
-	var z0:=floorf(p.z/step)*step
-	var fy:=(p.y-y0)/step
-	var fz:=(p.z-z0)/step
-	var v00:=density(Vector3(p.x,y0,z0))
-	if fy==0.0 and fz==0.0: return v00
-	var v11:=density(Vector3(p.x,y0+step,z0+step))
-	if fy>=fz:
-		var v10:=density(Vector3(p.x,y0+step,z0))
-		return v00+fy*(v10-v00)+fz*(v11-v10)
-	var v01:=density(Vector3(p.x,y0,z0+step))
-	return v00+fz*(v01-v00)+fy*(v11-v01)
-
-## Every chunk the surface passes through. Columns are 16 m in the shallows and 32 m (with 32 m layers) past coarse_from.
-func chunk_coordinates() -> Array[Vector3i]:
-	var result: Array[Vector3i]=[]
-	var area:=settings.play_area()
-	var step:=settings.chunk_size
-	var cx:=floori(area.position.x/step)
-	while cx<ceili(area.end.x/step):
-		var scale:=settings.chunk_scale(Vector3i(cx,0,0))
-		var size:=step*scale
-		var cz:=floori(area.position.y/step)
-		while cz<ceili(area.end.y/step):
-			var span:=surface_span(Rect2(Vector2(cx,cz)*step,Vector2.ONE*size),settings.voxel_size*scale)
-			for layer in range(floori(span.x/size),floori(span.y/size)+1):
-				result.append(Vector3i(cx,layer*scale,cz))
-			cz+=scale
-		cx+=scale
-	return result
-
 ## The lowest and highest the surface can reach over a column's footprint, with room to spare.
 func surface_span(footprint: Rect2,voxel: float) -> Vector2:
 	var low:=INF
@@ -267,117 +206,40 @@ func surface_span(footprint: Rect2,voxel: float) -> Vector2:
 	# Nothing rises above the water, so the layer above the sea floor is never needed.
 	return Vector2(low-margin,minf(high+margin,-0.001))
 
-func generate(coordinate: Vector3i) -> AbyssTerrainChunk:
-	var data:=AbyssTerrainChunk.new()
-	data.coordinate=coordinate
-	data.signature=settings.signature()
-	var size:=settings.chunk_extent(coordinate)
-	var voxel:=settings.voxel_size*settings.chunk_scale(coordinate)
-	var cells:=roundi(size/voxel)
-	var side:=cells+1
-	var base:=Vector3(coordinate)*settings.chunk_size
-	var subset:=relevant_segments(AABB(base,Vector3.ONE*size).grow(4))
-	# A fine chunk against the coarse area takes its +x face from the coarse neighbour's samples, so the seam is closed.
-	var against_coarse:=settings.chunk_scale(coordinate)==1 and is_equal_approx(base.x+size,settings.coarse_from)
-	var values:=PackedFloat32Array()
-	values.resize(side*side*side)
-	var any_air:=false
-	var any_solid:=false
-	for y in range(side):
-		for z in range(side):
+## Whether a block can hold any surface (or is all rock or all water, by a wide margin).
+func block_kind(block: Vector3i) -> int:
+	var size:=float(AbyssTerrainSettings.BLOCK)
+	var span:=surface_span(Rect2(Vector2(block.x,block.z)*size,Vector2.ONE*size),1.0)
+	var reach:=AbyssTerrainSettings.DISTANCE_RANGE+1.0
+	if block.y*size>span.y+reach: return AbyssVoxelBatch.EMPTY
+	if (block.y+1)*size<span.x-reach: return AbyssVoxelBatch.SOLID
+	return AbyssVoxelBatch.DATA
+
+## A block's voxels, one byte each (x fastest, then y, then z): the distance to the surface in metres, positive in rock,
+## clamped to DISTANCE_RANGE. The density here is mostly height above or below the ground, which on a steep face says
+## the surface is much further away than it is, so each value is divided by how fast the density changes there.
+func block_voxels(block: Vector3i) -> PackedByteArray:
+	var n:=AbyssTerrainSettings.BLOCK
+	var side:=n+2
+	var base:=Vector3(block)*n-Vector3.ONE
+	var subset:=relevant_segments(AABB(base,Vector3.ONE*side).grow(4))
+	var raw:=PackedFloat32Array()
+	raw.resize(side*side*side)
+	for z in range(side):
+		for y in range(side):
 			for x in range(side):
-				var p:=base+Vector3(x,y,z)*voxel
-				var value:=coarse_face_density(p) if against_coarse and x==cells else density(p,subset,false)
-				values[x+side*(z+side*y)]=value
-				any_air=any_air or value<0
-				any_solid=any_solid or value>=0
-	if not any_air or not any_solid: return data
-	var vertices:=PackedVector3Array()
-	var normals:=PackedVector3Array()
-	var colors:=PackedColorArray()
-	var indices:=PackedInt32Array()
-	var edge_ids: Dictionary={}
-	var position_ids: Dictionary={}
-	for y in range(cells):
-		for z in range(cells):
-			for x in range(cells):
-				var ids:=PackedInt32Array()
-				var mask:=0
-				for j in range(8):
-					var c: Vector3i=CORNERS[j]+Vector3i(x,y,z)
-					ids.append(c.x+side*(c.z+side*c.y))
-					if values[ids[-1]]>=0: mask|=1<<j
-				if mask==0 or mask==255: continue
-				for tetra in TETRA:
-					var inside:=PackedInt32Array()
-					var outside:=PackedInt32Array()
-					for c in tetra:
-						if values[ids[c]]>=0: inside.append(ids[c])
-						else: outside.append(ids[c])
-					if inside.is_empty() or outside.is_empty(): continue
-					var crossing:=PackedInt32Array()
-					for a in inside:
-						for b in outside:
-							var lo:=mini(a,b); var hi:=maxi(a,b)
-							var key:=lo+hi*side*side*side
-							if not edge_ids.has(key):
-								var pa:=Vector3(lo%side,lo/(side*side),(lo/side)%side)*voxel+base
-								var pb:=Vector3(hi%side,hi/(side*side),(hi/side)%side)*voxel+base
-								var v:=pa.lerp(pb,values[lo]/(values[lo]-values[hi])).snapped(Vector3.ONE*0.00001)
-								if not position_ids.has(v):
-									position_ids[v]=vertices.size()
-									vertices.append(v)
-									normals.append(normal(v,subset))
-								edge_ids[key]=position_ids[v]
-							crossing.append(edge_ids[key])
-					var tris:= [0,1,2] if crossing.size()==3 else [0,1,2,1,3,2]
-					for k in range(0,tris.size(),3):
-						var a:=crossing[tris[k]];var b:=crossing[tris[k+1]];var c:=crossing[tris[k+2]]
-						var cross: Vector3=(vertices[b]-vertices[a]).cross(vertices[c]-vertices[a])
-						if cross.dot(normals[a]+normals[b]+normals[c])>0:
-							indices.append_array(PackedInt32Array([a,c,b]))
-						else: indices.append_array(PackedInt32Array([a,b,c]))
-	if indices.is_empty(): return data
-	# Relax the actual mesh, then project back to the rounded density surface.
-	# Border vertices stay fixed, so independently loaded neighbouring chunks remain watertight.
-	var neighbours: Array[PackedInt32Array]=[]
-	neighbours.resize(vertices.size())
-	for i in range(0,indices.size(),3):
-		for edge in range(3):
-			var a:=indices[i+edge];var b:=indices[i+(edge+1)%3]
-			if not neighbours[a].has(b): neighbours[a].append(b)
-			if not neighbours[b].has(a): neighbours[b].append(a)
-	for iteration in range(2):
-		var smoothed:=vertices.duplicate()
-		for i in range(vertices.size()):
-			var local:=vertices[i]-base
-			if minf(minf(local.x,local.y),local.z)<0.001 or maxf(maxf(local.x,local.y),local.z)>size-0.001: continue
-			var average:=Vector3.ZERO
-			for j in neighbours[i]: average+=vertices[j]
-			if neighbours[i].is_empty(): continue
-			var v:=vertices[i].lerp(average/neighbours[i].size(),0.45)
-			v+=normal(v,subset)*clampf(density(v,subset,false),-0.35,0.35)
-			smoothed[i]=v
-		vertices=smoothed
-	for i in range(vertices.size()): normals[i]=normal(vertices[i],subset)
-	var final_indices:=PackedInt32Array()
-	for i in range(0,indices.size(),3):
-		var a:=indices[i];var b:=indices[i+1];var c:=indices[i+2]
-		var face: Vector3=(vertices[b]-vertices[a]).cross(vertices[c]-vertices[a])
-		if face.length_squared()==0.0: continue
-		if face.dot(normals[a]+normals[b]+normals[c])>0:
-			final_indices.append_array(PackedInt32Array([a,c,b]))
-		else: final_indices.append_array(PackedInt32Array([a,b,c]))
-	indices=final_indices
-	for i in range(vertices.size()): colors.append(lighting(vertices[i],normals[i],subset))
-	var arrays:=[]
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX]=vertices
-	arrays[Mesh.ARRAY_NORMAL]=normals
-	arrays[Mesh.ARRAY_COLOR]=colors
-	arrays[Mesh.ARRAY_INDEX]=indices
-	data.mesh=ArrayMesh.new()
-	data.mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
-	data.collision=data.mesh.create_trimesh_shape()
-	data.collision.backface_collision=true
-	return data
+				raw[x+side*(y+side*z)]=density(base+Vector3(x,y,z),subset,false)
+	var out:=PackedByteArray()
+	out.resize(n*n*n)
+	var scale:=127.0/AbyssTerrainSettings.DISTANCE_RANGE
+	for z in range(n):
+		for y in range(n):
+			for x in range(n):
+				var i:=(x+1)+side*((y+1)+side*(z+1))
+				var v:=raw[i]
+				var gx:=(raw[i+1]-raw[i-1])*0.5
+				var gy:=(raw[i+side]-raw[i-side])*0.5
+				var gz:=(raw[i+side*side]-raw[i-side*side])*0.5
+				var d:=v/maxf(sqrt(gx*gx+gy*gy+gz*gz),0.5)
+				out[x+n*(y+n*z)]=clampi(roundi(d*scale)+128,1,255)
+	return out

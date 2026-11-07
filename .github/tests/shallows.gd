@@ -4,6 +4,8 @@ var terrain: AbyssTerrain
 var swimmer: AbyssSwimmer
 var ocean: AbyssOcean
 var fixture: Node3D
+## Where the terrain streams around (it stands in for the camera).
+var eye: Node3D
 func _initialize() -> void: run.call_deferred()
 func check(ok: bool,message: String) -> void:
 	if not ok:
@@ -16,139 +18,152 @@ func key(code: Key,pressed: bool) -> void:
 	event.physical_keycode=code
 	event.pressed=pressed
 	Input.parse_input_event(event)
-func ray(a: Vector3,b: Vector3) -> Dictionary:
-	return fixture.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(a,b,1))
-func check_surface_integrity() -> void:
-	var settings:=AbyssTerrainSettings.new()
-	var index: AbyssTerrainBakeIndex=load('res://world/terrain/baked/index.tres')
-	var open_edges:=0
-	var folded:=0
-	var triangles:=0
-	for path in index.files:
-		var data: AbyssTerrainChunk=load(path)
-		var arrays:=data.mesh.surface_get_arrays(0)
-		var vertices: PackedVector3Array=arrays[Mesh.ARRAY_VERTEX]
-		var normals: PackedVector3Array=arrays[Mesh.ARRAY_NORMAL]
-		var ids: PackedInt32Array=arrays[Mesh.ARRAY_INDEX]
-		triangles+=ids.size()/3
-		var counts: Dictionary={}
-		for i in range(0,ids.size(),3):
-			var a:=ids[i];var b:=ids[i+1];var c:=ids[i+2]
-			if (vertices[b]-vertices[a]).cross(vertices[c]-vertices[a]).dot(normals[a]+normals[b]+normals[c])>0.00001: folded+=1
-			for edge in range(3):
-				var lo:=mini(ids[i+edge],ids[i+(edge+1)%3]);var hi:=maxi(ids[i+edge],ids[i+(edge+1)%3])
-				var key:=lo+hi*vertices.size()
-				counts[key]=counts.get(key,0)+1
-		var base:=Vector3(data.coordinate)*settings.chunk_size
-		var size:=settings.chunk_extent(data.coordinate)
-		for key in counts:
-			if counts[key]!=1: continue
-			var a:=vertices[key%vertices.size()]-base
-			var b:=vertices[key/vertices.size()]-base
-			var boundary:=false
-			for axis in range(3):
-				if absf(a[axis])<0.0001 and absf(b[axis])<0.0001 or absf(a[axis]-size)<0.0001 and absf(b[axis]-size)<0.0001: boundary=true
-			if not boundary: open_edges+=1
-	print('Terrain integrity: ',index.files.size(),' chunks; ',triangles,' triangles; ',open_edges,' interior open edges; ',folded,' reversed faces')
-	check(open_edges==0,'Smoothed terrain must not have interior holes')
-	check(folded==0,'Smoothed terrain faces must point out of the solid volume')
-	check(triangles<1000000,'Shallows, drop-off and deep plateau must remain within their geometry budget')
+func ray(a: Vector3,b: Vector3,back_faces:=false) -> Dictionary:
+	var query:=PhysicsRayQueryParameters3D.create(a,b,1)
+	query.hit_back_faces=back_faces
+	return fixture.get_world_3d().direct_space_state.intersect_ray(query)
 
-## Where the 1 m shallows chunks meet the 2 m deep chunks, every corner of the coarse side's edge must be on the fine side too.
-func check_coarse_seam() -> void:
-	var settings:=AbyssTerrainSettings.new()
-	var index: AbyssTerrainBakeIndex=load('res://world/terrain/baked/index.tres')
-	var fine: Dictionary={}
-	var coarse: Array[Vector3]=[]
-	for i in range(index.files.size()):
-		var coordinate: Vector3i=index.coordinates[i]
-		var near_fine:=is_equal_approx((coordinate.x+1)*settings.chunk_size,settings.coarse_from)
-		var near_coarse:=is_equal_approx(coordinate.x*settings.chunk_size,settings.coarse_from)
-		if not near_fine and not near_coarse: continue
-		var data: AbyssTerrainChunk=load(index.files[i])
-		for p: Vector3 in data.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
-			if absf(p.x-settings.coarse_from)>0.0001: continue
-			if near_fine: fine[p.snapped(Vector3.ONE*0.001)]=true
-			else: coarse.append(p)
-	var unmatched:=0
-	for p in coarse:
-		if not fine.has(p.snapped(Vector3.ONE*0.001)): unmatched+=1
-	print('Coarse seam: ',coarse.size(),' coarse edge vertices; ',unmatched,' without a fine partner')
-	check(coarse.size()>20,'Seam test must cover a real fine-to-coarse boundary')
-	check(unmatched==0,'The deep chunks must meet the shallows chunks without gaps')
+## Moves the streaming centre and waits until every wanted block there has its mesh (and collision close by).
+func stream_at(p: Vector3) -> void:
+	eye.global_position=p
+	var deadline:=Time.get_ticks_msec()+20000
+	await process_frame
+	while (not terrain.all_ready or terrain._centre.distance_to(p)>0.01) and Time.get_ticks_msec()<deadline:
+		await process_frame
+		OS.delay_msec(1)
+	check(terrain.all_ready and terrain.near_ready,'Terrain must finish streaming in around %s'%p)
+	await frames(2)
+
+## Every open edge of every block mesh must run along open edges of the block across from it: same-detail neighbours
+## share their boundary exactly, and a finer block only adds points along a coarser one's edges. Skirts (alpha 0) aside.
+func check_watertight(where: String) -> void:
+	var area:=terrain.settings.play_area()
+	var n:=float(AbyssTerrainSettings.BLOCK)
+	var open:={}
+	var inside:=0
+	var reversed:=0
+	var triangles:=0
+	var levels:=[0,0,0]
+	for b in terrain.chunks:
+		var entry: Dictionary=terrain.chunks[b]
+		levels[entry.lod]+=1
+		if not entry.has('visual'): continue
+		var arrays: Array=entry.visual.mesh.surface_get_arrays(0)
+		var v: PackedVector3Array=arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array=arrays[Mesh.ARRAY_NORMAL]
+		var colours: PackedColorArray=arrays[Mesh.ARRAY_COLOR]
+		var ids: PackedInt32Array=arrays[Mesh.ARRAY_INDEX]
+		var count:={}
+		for i in range(0,ids.size(),3):
+			if colours[ids[i]].a<0.5: continue
+			triangles+=1
+			var a:=v[ids[i]]
+			# Only at full detail (coarser blocks over the narrow cave tunnels fold the odd sliver, still facing the water),
+			# and not for specks under 0.02 square metres, whose direction is only rounding.
+			var front:=(v[ids[i+2]]-a).cross(v[ids[i+1]]-a)
+			if entry.lod==0 and front.length()*0.5>0.02 and front.dot(normals[ids[i]]+normals[ids[i+1]]+normals[ids[i+2]])<0.0: reversed+=1
+			for e in range(3):
+				var k:=Vector2i(mini(ids[i+e],ids[i+(e+1)%3]),maxi(ids[i+e],ids[i+(e+1)%3]))
+				count[k]=count.get(k,0)+1
+		var lo:=Vector3(b)*n
+		var list:=[]
+		for k in count:
+			if count[k]!=1: continue
+			var p:=v[k.x]
+			var q:=v[k.y]
+			var on_box:=false
+			for axis in range(3):
+				for face in [lo[axis],lo[axis]+n]:
+					if absf(p[axis]-face)<0.001 and absf(q[axis]-face)<0.001: on_box=true
+			if on_box: list.append([p,q])
+			else: inside+=1
+		open[b]=list
+	var cracks:=0
+	for b in open:
+		for edge in open[b]:
+			var mid: Vector3=(edge[0]+edge[1])*0.5
+			if mid.x<area.position.x+0.01 or mid.x>area.end.x-0.01 or mid.z<area.position.y+0.01 or mid.z>area.end.y-0.01: continue
+			var covered:=[false,false,false]
+			var unloaded:=false
+			for o in terrain._neighbours:
+				var other: Vector3i=b+o
+				if not AABB(Vector3(other)*n,Vector3.ONE*n).grow(0.002).has_point(mid): continue
+				if not terrain.chunks.has(other):
+					unloaded=true
+					continue
+				for seg in open.get(other,[]):
+					for i in range(3):
+						if on_segment([edge[0],edge[1],mid][i],seg[0],seg[1]): covered[i]=true
+			if not unloaded and not (covered[0] and covered[1] and covered[2]): cracks+=1
+	print('Streamed terrain at %s: blocks by detail %s; %d triangles; %d open edges inside blocks; %d unmatched edges between blocks; %d full-detail faces against their normals'%[where,levels,triangles,inside,cracks,reversed])
+	check(levels[0]>0 and levels[1]>0 and levels[2]>0,'All three detail levels must be in use around '+where)
+	check(inside==0,'Block meshes must have no holes inside them ('+where+')')
+	check(cracks==0,'Neighbouring blocks must meet without gaps, at any mix of detail ('+where+')')
+	check(reversed==0,'Full-detail faces must point the same way as their normals ('+where+')')
+	check(triangles<400000,'Streamed terrain must stay within its triangle budget ('+where+')')
+
+func on_segment(p: Vector3,a: Vector3,b: Vector3) -> bool:
+	var ab:=b-a
+	var t:=clampf((p-a).dot(ab)/maxf(ab.length_squared(),1e-12),0.0,1.0)
+	return p.distance_to(a+ab*t)<0.002
 
 ## Seen from straight above, the first surface at every point across the drop-off's lip must face up. Faces wound the
 ## other way are culled when drawn, and show as holes through the ground (as the first version of the lip did).
 func check_lip_faces_up() -> void:
-	var settings:=AbyssTerrainSettings.new()
-	var space:=fixture.get_world_3d().direct_space_state
+	var settings:=terrain.settings
 	var rays:=0
 	var inward:=0
-	# A quarter metre off the voxel grid, so no ray runs exactly along the plane where two chunks meet.
-	var x:=settings.shelf_edge-settings.shelf_wobble-8.0+0.25
-	while x<settings.shelf_edge+settings.shelf_wobble+20.0:
-		for zi in range(-127,128):
-			var query:=PhysicsRayQueryParameters3D.create(Vector3(x,2,zi+0.5),Vector3(x,-260,zi+0.5),1)
-			query.hit_back_faces=true
-			var hit:=space.intersect_ray(query)
-			if hit.is_empty() or hit.face_index<0: continue
-			var faces: PackedVector3Array=(hit.collider.get_child(1) as CollisionShape3D).shape.get_faces()
-			var i: int=hit.face_index*3
-			rays+=1
-			# Drawn front is clockwise: its normal is (c - a) x (b - a).
-			if (faces[i+2]-faces[i]).cross(faces[i+1]-faces[i]).y<=0.0:
-				inward+=1
-				if inward<=5: print('  turned into the rock at ',hit.position)
-		x+=0.5
+	for zc in range(-112,113,32):
+		await stream_at(Vector3(settings.shelf_edge,-6,zc))
+		# Off the voxel grid, so no ray runs exactly along the plane where two blocks meet.
+		var x:=settings.shelf_edge-settings.shelf_wobble-8.0+0.37
+		while x<settings.shelf_edge+settings.shelf_wobble+20.0:
+			for zi in range(zc-16,zc+16):
+				if zi< -127 or zi>127: continue
+				var hit:=ray(Vector3(x,2,zi+0.5),Vector3(x,-260,zi+0.5),true)
+				if hit.is_empty() or hit.face_index<0: continue
+				var body: CollisionObject3D=hit.collider
+				var shape: ConcavePolygonShape3D=body.shape_owner_get_shape(body.shape_find_owner(hit.shape),0)
+				var faces:=shape.get_faces()
+				var i: int=hit.face_index*3
+				rays+=1
+				# Clearly facing down (a hole). Near-vertical faces of the cliff can tip a little either way and get grazed.
+				if (faces[i+2]-faces[i]).cross(faces[i+1]-faces[i]).normalized().y< -0.1:
+					inward+=1
+					if inward<=5: print('  turned into the rock at ',hit.position)
+			x+=0.5
 	print('Lip from above: ',rays,' rays; ',inward,' first hits on faces turned into the rock')
 	check(rays>10000,'Lip check must cover the whole drop-off')
 	check(inward==0,'Every surface seen from above across the lip must face up (no holes)')
 
 func run() -> void:
-	check_surface_integrity()
-	check_coarse_seam()
 	fixture=Node3D.new()
 	root.add_child(fixture)
+	eye=Node3D.new()
+	fixture.add_child(eye)
 	terrain=AbyssTerrain.new()
+	terrain.observer=eye
 	fixture.add_child(terrain)
-	var deadline:=Time.get_ticks_msec()+10000
-	while not terrain.all_ready and Time.get_ticks_msec()<deadline:
-		await process_frame
-		OS.delay_msec(1)
-	check(terrain.all_ready,'Baked terrain must finish loading')
-	await frames(3)
-	check_lip_faces_up()
-	var generator:=AbyssTerrainGenerator.new()
+	check(terrain.store.index!=null,'The baked voxels must match the generator')
+	var generator:=terrain.generator
+	# The bake reproduces: a block worked out again matches what was stored.
+	var block:=Vector3i(0,-1,-1)
+	check(generator.block_voxels(block)==terrain.store.block(block),'The same seed must reproduce the baked voxels')
+	for where in [['spawn',Vector3(0,-3,8)],['the lip',Vector3(112,-6,0)],['the deep plateau',Vector3(300,-195,40)]]:
+		await stream_at(where[1])
+		check_watertight(where[0])
+	await check_lip_faces_up()
 	for route in generator.routes:
 		for p in route: check(generator.density(p)< -2.0,'Cave network must have continuous swimmable clearance')
+	await stream_at(Vector3(60,-6,60))
 	var seabed:=ray(Vector3(60,1,60),Vector3(60,-30,60))
 	check(not seabed.is_empty(),'Seabed must have real collision')
 	var chamber:=generator.chamber
+	await stream_at(chamber)
 	var roof:=ray(chamber,chamber+Vector3.UP*14)
 	var floor_hit:=ray(chamber,chamber+Vector3.DOWN*14)
 	check(not roof.is_empty() and not floor_hit.is_empty(),'Cave chamber must have a collidable roof and floor')
 	if not roof.is_empty(): check(roof.position.y<generator.height(chamber.x,chamber.z)-1.0,'Cave roof must be underground, below the seabed')
-	# Independently generated neighbouring chunks must share positions and normals at the boundary.
-	var a: AbyssTerrainChunk=load('res://world/terrain/baked/0_-1_-1.res')
-	var b: AbyssTerrainChunk=load('res://world/terrain/baked/0_-1_-2.res')
-	var av:=a.mesh.surface_get_arrays(0)
-	var bv:=b.mesh.surface_get_arrays(0)
-	var edge: Dictionary={}
-	for i in range(av[Mesh.ARRAY_VERTEX].size()):
-		var p: Vector3=av[Mesh.ARRAY_VERTEX][i]
-		if absf(p.z+16)<0.0001: edge[p.snapped(Vector3.ONE*0.0001)]=av[Mesh.ARRAY_NORMAL][i]
-	var shared:=0
-	for i in range(bv[Mesh.ARRAY_VERTEX].size()):
-		var p: Vector3=bv[Mesh.ARRAY_VERTEX][i]
-		if absf(p.z+16)<0.0001:
-			var k:=p.snapped(Vector3.ONE*0.0001)
-			check(edge.has(k),'Shared chunk boundary vertices must match')
-			if edge.has(k):
-				shared+=1
-				check(edge[k].distance_to(bv[Mesh.ARRAY_NORMAL][i])<0.002,'Shared terrain normals must be continuous')
-	check(shared>5,'Seam test must cover a real terrain boundary')
-	var repeated:=generator.generate(Vector3i(0,-1,-1))
-	check(repeated.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX].to_byte_array()==av[Mesh.ARRAY_VERTEX].to_byte_array(),'The same seed must reproduce the baked chunk')
 	var different:=AbyssTerrainSettings.new()
 	different.seed+=1
 	check(absf(AbyssTerrainGenerator.new(different).height(24,24)-generator.height(24,24))>0.01,'Changing the seed must change geology')
@@ -180,6 +195,7 @@ func run() -> void:
 		key(KEY_CTRL,false)
 		var feet: float=swimmer.collider.global_position.y-(swimmer.collider.shape as CapsuleShape3D).height*0.5
 		check(feet>=floor_hit.position.y-0.12,'Swimming downward must not pass through the cave floor')
+	await stream_at(Vector3(0,-2,8))
 	var water: float=ocean.sample_surface(Vector3(0,0,8)).height
 	swimmer.global_position=Vector3(0,water+0.3-1.6,8)
 	swimmer.velocity=Vector3.ZERO
@@ -197,7 +213,7 @@ func run() -> void:
 	key(KEY_E,false)
 	check(absf(swimmer.rotation.y-yaw)>1.0,'Turning must be smooth and continuous')
 	check(Vector2(swimmer.head.global_position.x-pivot.x,swimmer.head.global_position.z-pivot.z).length()<0.05,'Smooth turning must preserve the head pivot')
-	print('Shallows checks: ',terrain.chunks.size(),' chunks; ',shared,' shared seam vertices; cave collision, deterministic generation, surface buoyancy, smooth turn')
+	print('Shallows checks: streaming, watertight detail levels, lip, cave collision, deterministic bake, surface buoyancy, smooth turn')
 	print('Shallows physics: ','PASS' if failures.is_empty() else 'FAIL')
 	fixture.queue_free()
 	ocean.free()

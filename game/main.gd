@@ -14,9 +14,6 @@ const UNDERWATER_FAR := 150.0
 ## (nor are the sunbeams drawn). It all comes back a little shallower, so hovering at the line cannot flicker it.
 const DEEP_HIDE_SURFACE := 60.0
 const DEEP_SHOW_SURFACE := 52.0
-## Terrain is drawn out to where the fog leaves under 2% of it showing (exp(-4) of it), so chunks never visibly pop in or
-## out; near the surface that is the camera's own limit, and deep down, where the fog is thick, much closer.
-const FOG_HIDES_TERRAIN := 4.0
 const UNDERWATER_SKY_SHADER := preload("res://world/ocean/shaders/underwater_sky.gdshader")
 const WATER_UNDERSIDE_SHADER := preload("res://world/ocean/shaders/underside.gdshader")
 const PHYSICAL_SKY_GL_SHADER := preload("res://world/physical_sky_gl.gdshader")
@@ -177,7 +174,6 @@ func _on_stopping() -> void:
 func _process(delta: float) -> void:
 	if not freeze_time: day_night.advance(delta)
 	day_night.apply(sun, sky_sun, surface_environment, underwater_environment, ocean.material, terrain.material, delta, maxf(player.head_depth, 0.0) if submerged else 0.0, underwater_sky)
-	if submerged: terrain.set_view_distance(snappedf(clampf(FOG_HIDES_TERRAIN / underwater_environment.fog_density, 20.0, UNDERWATER_FAR), 5.0))
 	var sources := PackedVector3Array([camera.global_position, left_controller.global_position, right_controller.global_position])
 	var boosts := PackedFloat32Array([0.0, 0.0, 0.0])
 	for i in range(player.thrusters.motors.size()):
