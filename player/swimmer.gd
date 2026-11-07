@@ -51,8 +51,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	if not ocean: return
-	var sample:=ocean.sample_surface(head.global_position)
-	surface_height=sample.height
+	# Well below the waves their exact height no longer matters, and finding it is the costliest thing done here each tick.
+	if head.global_position.y<ocean.sea_level-AbyssOcean.BELOW_WAVES: surface_height=ocean.sea_level
+	else: surface_height=ocean.sample_surface(head.global_position).height
 	if not spawned:
 		var local_head_height:=head.global_position.y-global_position.y
 		global_position.y=surface_height+0.38-local_head_height
@@ -103,7 +104,7 @@ func _physics_process(delta: float) -> void:
 	if immersion<0.05: velocity.y=minf(velocity.y,0.0)
 	motion_mode=CharacterBody3D.MOTION_MODE_FLOATING if immersion>0.4 else CharacterBody3D.MOTION_MODE_GROUNDED
 	if terrain:
-		var extent:=Vector2(terrain.settings.region_chunks)*terrain.settings.chunk_size*0.5-Vector2.ONE*1.5
-		if global_position.x>extent.x and velocity.x>0 or global_position.x< -extent.x and velocity.x<0: velocity.x=0
-		if global_position.z>extent.y and velocity.z>0 or global_position.z< -extent.y and velocity.z<0: velocity.z=0
+		var area:=terrain.settings.play_area().grow(-1.5)
+		if global_position.x>area.end.x and velocity.x>0 or global_position.x<area.position.x and velocity.x<0: velocity.x=0
+		if global_position.z>area.end.y and velocity.z>0 or global_position.z<area.position.y and velocity.z<0: velocity.z=0
 	move_and_slide()

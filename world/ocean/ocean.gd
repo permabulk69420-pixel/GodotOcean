@@ -4,6 +4,8 @@ extends Node3D
 
 const WAVE_COUNT := 64
 const GRAVITY := 9.81
+## Deeper than this below sea level the waves cannot reach, so nothing needs their exact height.
+const BELOW_WAVES := 20.0
 const SURFACE_SHADER := preload("res://world/ocean/shaders/surface.gdshader")
 
 @export var settings: AbyssOceanSettings

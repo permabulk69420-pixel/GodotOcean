@@ -80,7 +80,7 @@ func _ready() -> void:
 	var mushroom := get_node_or_null('../Mushroom') as AbyssMushroom
 	load_kit()
 	coral_material = make_coral_material()
-	var half := Vector2(terrain.settings.region_chunks) * terrain.settings.chunk_size * 0.5
+	var half := terrain.settings.decorated_half
 	var rng := RandomNumberGenerator.new()
 	rng.seed = terrain.settings.seed + 211
 	# cells[material kind][cell] -> Array of [mesh_name, Transform3D, Color]

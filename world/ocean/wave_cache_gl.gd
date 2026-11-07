@@ -62,6 +62,11 @@ func _update() -> void:
 	material.set_shader_parameter("parameters", Vector4(parameters[0], parameters[1], parameters[2], parameters[3]))
 	ready = true
 
+## While the water surface is out of sight far below it, the 2D pass is not drawn.
+func set_paused(on: bool) -> void:
+	if is_instance_valid(viewport):
+		viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED if on else SubViewport.UPDATE_ALWAYS
+
 func release() -> void:
 	active = false
 	if RenderingServer.frame_pre_draw.is_connected(_update): RenderingServer.frame_pre_draw.disconnect(_update)

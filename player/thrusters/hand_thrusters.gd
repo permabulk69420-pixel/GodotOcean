@@ -121,7 +121,7 @@ func _physics_process(delta: float) -> void:
 		var index := motors.find(motor)
 		throttles[index] = trigger
 		# The tools only propel while submerged: they cannot be used as jetpacks.
-		if trigger > 0.03 and motor.global_position.y < player.ocean.sample_surface(motor.global_position).height:
+		if trigger > 0.03 and (motor.global_position.y < player.ocean.sea_level - AbyssOcean.BELOW_WAVES or motor.global_position.y < player.ocean.sample_surface(motor.global_position).height):
 			propulsion += -motor.global_basis.z.normalized() * trigger
 	if motors.is_empty() and player.spawned and player.controls_enabled and (hands[0].controller.get_has_tracking_data() or hands[1].controller.get_has_tracking_data()):
 		tracked_frames += 1

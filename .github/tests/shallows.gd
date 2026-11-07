@@ -40,21 +40,46 @@ func check_surface_integrity() -> void:
 				var key:=lo+hi*vertices.size()
 				counts[key]=counts.get(key,0)+1
 		var base:=Vector3(data.coordinate)*settings.chunk_size
+		var size:=settings.chunk_extent(data.coordinate)
 		for key in counts:
 			if counts[key]!=1: continue
 			var a:=vertices[key%vertices.size()]-base
 			var b:=vertices[key/vertices.size()]-base
 			var boundary:=false
 			for axis in range(3):
-				if absf(a[axis])<0.0001 and absf(b[axis])<0.0001 or absf(a[axis]-settings.chunk_size)<0.0001 and absf(b[axis]-settings.chunk_size)<0.0001: boundary=true
+				if absf(a[axis])<0.0001 and absf(b[axis])<0.0001 or absf(a[axis]-size)<0.0001 and absf(b[axis]-size)<0.0001: boundary=true
 			if not boundary: open_edges+=1
 	print('Terrain integrity: ',index.files.size(),' chunks; ',triangles,' triangles; ',open_edges,' interior open edges; ',folded,' reversed faces')
 	check(open_edges==0,'Smoothed terrain must not have interior holes')
 	check(folded==0,'Smoothed terrain faces must point out of the solid volume')
-	check(triangles<350000,'Initial biome must remain within its geometry budget')
+	check(triangles<1000000,'Shallows, drop-off and deep plateau must remain within their geometry budget')
+
+## Where the 1 m shallows chunks meet the 2 m deep chunks, every corner of the coarse side's edge must be on the fine side too.
+func check_coarse_seam() -> void:
+	var settings:=AbyssTerrainSettings.new()
+	var index: AbyssTerrainBakeIndex=load('res://world/terrain/baked/index.tres')
+	var fine: Dictionary={}
+	var coarse: Array[Vector3]=[]
+	for i in range(index.files.size()):
+		var coordinate: Vector3i=index.coordinates[i]
+		var near_fine:=is_equal_approx((coordinate.x+1)*settings.chunk_size,settings.coarse_from)
+		var near_coarse:=is_equal_approx(coordinate.x*settings.chunk_size,settings.coarse_from)
+		if not near_fine and not near_coarse: continue
+		var data: AbyssTerrainChunk=load(index.files[i])
+		for p: Vector3 in data.mesh.surface_get_arrays(0)[Mesh.ARRAY_VERTEX]:
+			if absf(p.x-settings.coarse_from)>0.0001: continue
+			if near_fine: fine[p.snapped(Vector3.ONE*0.001)]=true
+			else: coarse.append(p)
+	var unmatched:=0
+	for p in coarse:
+		if not fine.has(p.snapped(Vector3.ONE*0.001)): unmatched+=1
+	print('Coarse seam: ',coarse.size(),' coarse edge vertices; ',unmatched,' without a fine partner')
+	check(coarse.size()>20,'Seam test must cover a real fine-to-coarse boundary')
+	check(unmatched==0,'The deep chunks must meet the shallows chunks without gaps')
 
 func run() -> void:
 	check_surface_integrity()
+	check_coarse_seam()
 	fixture=Node3D.new()
 	root.add_child(fixture)
 	terrain=AbyssTerrain.new()

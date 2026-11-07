@@ -10,6 +10,10 @@ const XR_REFRESH_RATE := 90.0
 const XR_LOD_THRESHOLD := 3.0
 ## Underwater the fog has all but hidden anything past this, so the camera stops drawing there.
 const UNDERWATER_FAR := 150.0
+## Deeper than this the fog hides the water surface completely, so it is not drawn and its waves are not worked out
+## (nor are the sunbeams drawn). It all comes back a little shallower, so hovering at the line cannot flicker it.
+const DEEP_HIDE_SURFACE := 60.0
+const DEEP_SHOW_SURFACE := 52.0
 const UNDERWATER_SKY_SHADER := preload("res://world/ocean/shaders/underwater_sky.gdshader")
 const WATER_UNDERSIDE_SHADER := preload("res://world/ocean/shaders/underside.gdshader")
 const PHYSICAL_SKY_GL_SHADER := preload("res://world/physical_sky_gl.gdshader")
@@ -37,6 +41,8 @@ var xr: XRInterface
 var xr_focused := false
 var submerged := false
 var seabed_shown := true
+## True while far enough down that the water surface is out of sight (see DEEP_HIDE_SURFACE).
+var deep := false
 var surface_far := 6000.0
 ## The watch's performance test steps this: 0 everything shown, 1 no terrain, 2 no reef, 3 no seagrass, 4 none of them.
 var seabed_test := 0
@@ -174,7 +180,7 @@ func _process(delta: float) -> void:
 		sources.append(player.thrusters.motors[i].global_position)
 		boosts.append(player.thrusters.throttles[i] * 1.5)
 	plankton.update(delta, camera.global_position, sources, boosts, day_night.daylight, submerged)
-	light_shafts.update(camera.global_position, day_night.daylight, submerged)
+	light_shafts.update(camera.global_position, day_night.daylight, submerged and not deep)
 	mushroom.set_daylight(day_night.daylight)
 	ocean.window_sky.bake(day_night.sun_direction, day_night.daylight)
 	reef.set_daylight(day_night.daylight)
@@ -209,6 +215,13 @@ func update_water_state() -> void:
 	if show_seabed != seabed_shown:
 		seabed_shown = show_seabed
 		apply_seabed_visibility()
+	var next_deep := deep
+	if depth > DEEP_HIDE_SURFACE: next_deep = true
+	elif depth < DEEP_SHOW_SURFACE: next_deep = false
+	if next_deep != deep:
+		deep = next_deep
+		ocean.wave_cache.set_paused(deep)
+		apply_water_shader()
 	# The colour absorption in day_night.gd already dims the light with depth; this is the rest.
 	var energy := day_night.light_energy() * (exp(-maxf(depth, 0.0) * 0.02) if submerged else 1.0)
 	if not is_equal_approx(sun.light_energy,energy): sun.light_energy=energy
@@ -240,7 +253,7 @@ func build_water_shaders() -> void:
 
 ## Picks the water's shader and visibility for the current state.
 func apply_water_shader() -> void:
-	ocean.surface.visible = water_test != 4
+	ocean.surface.visible = water_test != 4 and not deep
 	var shader := water_shader
 	if water_test == 0 and submerged: shader = water_underside_shader
 	elif water_test == 1 and submerged: shader = water_unlit_shader

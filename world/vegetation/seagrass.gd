@@ -39,7 +39,7 @@ func _ready() -> void:
 	material.shader = SHADER
 	var mushroom := get_node_or_null('../Mushroom') as AbyssMushroom
 
-	var half := Vector2(settings.region_chunks) * settings.chunk_size * 0.5
+	var half := settings.decorated_half
 	var rng := RandomNumberGenerator.new()
 	rng.seed = settings.seed + 97
 	var patches := FastNoiseLite.new()

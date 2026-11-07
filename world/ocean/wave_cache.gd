@@ -17,13 +17,17 @@ var outputs: Array[RID] = []
 var ready := false
 var last_parameters := PackedFloat32Array()
 var active := false
+## Set while the water surface is out of sight far below it: the waves are not worked out then.
+var paused := false
 func start() -> void:
 	active=true
 	RenderingServer.frame_pre_draw.connect(_queue_update)
 func _queue_update() -> void:
 	RenderingServer.call_on_render_thread(_update)
+func set_paused(on: bool) -> void:
+	paused=on
 func _update() -> void:
-	if not active: return
+	if not active or paused: return
 	if not ready: _allocate()
 	if not ready: return
 	var list := rd.compute_list_begin()

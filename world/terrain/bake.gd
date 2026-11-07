@@ -8,7 +8,7 @@ func bake() -> void:
 	index.signature=settings.signature()
 	DirAccess.make_dir_recursive_absolute('res://world/terrain/baked')
 	var triangles:=0
-	for coordinate in settings.coordinates():
+	for coordinate in generator.chunk_coordinates():
 		var data:=generator.generate(coordinate)
 		if not data.mesh: continue
 		var path:='res://world/terrain/baked/%s_%s_%s.res'%[coordinate.x,coordinate.y,coordinate.z]

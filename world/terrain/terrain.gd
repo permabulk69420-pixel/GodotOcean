@@ -37,7 +37,7 @@ func _ready() -> void:
 				coordinates[files[i]]=index.coordinates[i]
 			return
 	# The same generator works for uncached chunks; only one low-priority task runs at a time.
-	for coordinate in settings.coordinates():
+	for coordinate in generator.chunk_coordinates():
 		var key:=str(coordinate)
 		pending.append(key)
 		coordinates[key]=coordinate
