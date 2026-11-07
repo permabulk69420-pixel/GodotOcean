@@ -11,8 +11,8 @@ const GROUND_COLOUR=preload('res://world/terrain/textures/ground_colour.jpg')
 const GROUND_NORMAL=preload('res://world/terrain/textures/ground_normal.jpg')
 const ROCK_COLOUR=preload('res://world/terrain/textures/rock_colour.jpg')
 const ROCK_NORMAL=preload('res://world/terrain/textures/rock_normal.jpg')
-## Tile sizes, nearest first. A 64 m tile has 2 m detail; a 1024 m one 32 m.
-const SIZES:=[64.0,128.0,256.0,512.0,1024.0]
+## Tile sizes, nearest first. A 32 m tile has 1 m detail; a 1024 m one 32 m.
+const SIZES:=[32.0,64.0,128.0,256.0,512.0,1024.0]
 const SEGMENTS:=32
 ## A tile splits into four when the camera is within this many times its own size of it, and joins up again only
 ## once the camera is this much further than that (so it does not flick back and forth at the line).
@@ -287,10 +287,11 @@ static func build_tile(map: AbyssWorldMap,size: float,x0: float,z0: float) -> Di
 			vertices.append(Vector3(x0+i*step,h[c],z0+j*step))
 			var normal:=Vector3(h[c-1]-h[c+1],2.0*step,h[c-side]-h[c+side]).normalized()
 			normals.append(normal)
-			# Sand where the region is sandy and the ground faces up, rock elsewhere; sunlit everywhere; large lighter and
-			# darker patches (in the ambient occlusion channel) so the textures do not read as a repeating pattern; and how
-			# much of the sand is grey silt (in alpha).
-			colours.append(Color(smoothstep(0.5,0.88,normal.y)*sand[c],1.0,map.patch(x0+i*step,z0+j*step),silt[c]))
+			# How sandy the ground is here (the shader makes steep ground rock, per pixel, from the smooth normal, so the line
+			# between sand and rock does not follow the triangles); sunlit everywhere; large lighter and darker patches (in
+			# the ambient occlusion channel) so the textures do not read as a repeating pattern; and how much of the sand is
+			# grey silt (in alpha).
+			colours.append(Color(sand[c],1.0,map.patch(x0+i*step,z0+j*step),silt[c]))
 	# Each vertex also carries the height the next coarser tile has there (its own height where that tile has a vertex,
 	# else halfway along that tile's edge or diagonal), and the distance from the camera by which it has fully become
 	# that: the shader blends towards it with distance, so a tile looks exactly like its coarser replacement by the time
@@ -303,7 +304,10 @@ static func build_tile(map: AbyssWorldMap,size: float,x0: float,z0: float) -> Di
 			var target:=h[c]
 			if i%2==1 and j%2==0: target=(h[c-1]+h[c+1])*0.5
 			elif i%2==0 and j%2==1: target=(h[c-side]+h[c+side])*0.5
-			elif i%2==1 and j%2==1: target=(h[c+1-side]+h[c-1+side])*0.5
+			elif i%2==1 and j%2==1:
+				# The middle of a coarser square: on whichever of its diagonals that tile splits it along (see below).
+				if absf(h[c-1-side]-h[c+1+side])<absf(h[c+1-side]-h[c-1+side]): target=(h[c-1-side]+h[c+1+side])*0.5
+				else: target=(h[c+1-side]+h[c-1+side])*0.5
 			morph.append(Vector2(target,end))
 	for j in range(n):
 		for i in range(n):
@@ -311,8 +315,13 @@ static func build_tile(map: AbyssWorldMap,size: float,x0: float,z0: float) -> Di
 			var b:=a+1
 			var c:=a+stride
 			var d:=c+1
+			# Each square is split along whichever diagonal has the smaller rise, so the crease follows the slope: split
+			# the same way everywhere, a steep edge running across the diagonals becomes a row of triangular teeth.
 			# Godot draws the clockwise side, which faces up here.
-			indices.append_array(PackedInt32Array([a,b,c,b,d,c]))
+			if absf(vertices[a].y-vertices[d].y)<absf(vertices[b].y-vertices[c].y):
+				indices.append_array(PackedInt32Array([a,b,d,a,d,c]))
+			else:
+				indices.append_array(PackedInt32Array([a,b,c,b,d,c]))
 	var faces:=PackedVector3Array()
 	faces.resize(indices.size())
 	for f in range(indices.size()): faces[f]=vertices[indices[f]]

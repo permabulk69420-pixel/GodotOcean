@@ -100,10 +100,9 @@ void fragment() {
  // Normal-map relief is hard to see through underwater fog beyond a few tens of metres.
  // Fade it smoothly between 14 and 28 m; skip the normal texture lookups past 28 m.
  float normal_detail = 1.0 - smoothstep(14.0, 28.0, terrain_distance);
- // 1 on level ground, 0 on rock and steep faces (baked into the vertex colour). Triangles steeper than about 60
- // degrees are rock whatever their corners say, so the foot of a wall is not drawn as a row of sandy teeth.
- vec3 face_n = normalize(cross(dFdy(world_position), dFdx(world_position)));
- float flat_amount = COLOR.r * smoothstep(0.35, 0.55, abs(face_n.y));
+ // 1 on level sandy ground, 0 on rock and steep faces: how sandy the ground is (vertex colour), taken off steep
+ // ground here per pixel from the smooth normal, so the line between sand and rock never follows the triangles.
+ float flat_amount = COLOR.r * smoothstep(0.5, 0.88, n.y);
  vec3 axis_sign = vec3(n.x < 0.0 ? -1.0 : 1.0, 1.0, n.z < 0.0 ? -1.0 : 1.0);
  bool along_x = abs(n.x) > abs(n.z);
  // Texture coordinates and their gradients are worked out up here, outside the branches, so every lookup below has

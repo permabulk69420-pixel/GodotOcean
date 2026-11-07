@@ -52,7 +52,7 @@ const CLIFF_TO := 0.85
 ## to its end.
 const TRENCH := [Vector2(20, -140), Vector2(-60, -420), Vector2(60, -760), Vector2(-30, -1080), Vector2(10, -1310)]
 const TRENCH_HALF_WIDTH := 34.0
-const TRENCH_WALL := 2.4
+const TRENCH_WALL := 1.7
 const TRENCH_CUT_START := 22.0
 const TRENCH_CUT_END := 70.0
 ## The map's edge: within this distance of it the floor falls away to EDGE_DEPTH. The line wanders by up to EDGE_WANDER.
@@ -347,7 +347,11 @@ func _trench(x: float,z: float,h: float) -> float:
 	# goes downhill all the way; its walls rise steeply either side.
 	var f:=along/_trench_length
 	var floor_height:=minf(general_depth(x,z),SHALLOWS_DEPTH)-lerpf(TRENCH_CUT_START,TRENCH_CUT_END,f)+rolling.get_noise_2d(x,z)*2.0
-	return minf(h,floor_height+maxf(0.0,best-half_width)*TRENCH_WALL)
+	# Rounded where the walls meet the ground above (a sharp lip cannot be drawn cleanly on the grid).
+	var wall:=floor_height+maxf(0.0,best-half_width)*TRENCH_WALL
+	var k:=6.0
+	var t:=clampf(0.5+0.5*(wall-h)/k,0.0,1.0)
+	return lerpf(wall,h,t)-k*t*(1.0-t)
 
 ## A smooth, wandering line through the given points (Catmull-Rom, every 10 m, nudged sideways by noise).
 func _smooth_line(points: Array) -> PackedVector2Array:
