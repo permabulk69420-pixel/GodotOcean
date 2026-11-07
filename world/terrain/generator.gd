@@ -3,11 +3,15 @@ extends RefCounted
 ## Positive density is rock; negative density is water/air. Samples use world coordinates.
 const CORNERS := [Vector3i(0,0,0),Vector3i(1,0,0),Vector3i(1,1,0),Vector3i(0,1,0),Vector3i(0,0,1),Vector3i(1,0,1),Vector3i(1,1,1),Vector3i(0,1,1)]
 const TETRA := [[0,1,2,6],[0,2,3,6],[0,3,7,6],[0,7,4,6],[0,4,5,6],[0,5,1,6]]
-## The most the cliff's crags move its face up or down (about 4 m sideways on the steep part).
-const CRAG_DEPTH := 36.0
+## The most the cliff's crags move its face up or down (under 1.5 m sideways on the steep part). Much more than this
+## carves pockets and holes into the face.
+const CRAG_DEPTH := 12.0
 ## The hole widens by this much towards its rim, and its walls wander in and out by up to HOLE_WOBBLE.
 const HOLE_FLARE := 12.0
 const HOLE_WOBBLE := 5.0
+## The lip is rounded over this much of the drop's width (about 5.6 m). A hard corner there is finer than the deep
+## area's 2 m voxels can follow, and triangles around it came out facing into the rock, seen as holes along the lip.
+const LIP_ROUNDING := 0.1
 ## Cave carving is skipped this far outside the cave network's bounds, where it cannot change anything near the surface.
 const CAVE_REACH := 12.0
 var settings: AbyssTerrainSettings
@@ -40,8 +44,8 @@ func _init(config: AbyssTerrainSettings = null) -> void:
 	edge_noise.frequency=0.012
 	edge_noise.fractal_octaves=2
 	crag.seed=settings.seed+1777
-	crag.frequency=0.04
-	crag.fractal_octaves=3
+	crag.frequency=0.05
+	crag.fractal_octaves=2
 	hole_noise.seed=settings.seed+2113
 	hole_noise.frequency=0.045
 	hole_noise.fractal_octaves=2
@@ -68,17 +72,20 @@ func deep_height(x: float,z: float) -> float:
 func _height(x: float,z: float,u: float) -> float:
 	var shallow:=shallows_height(x,z)
 	if u<=0.0: return shallow
-	# Steepest right at the lip, so the shelf ends sharply, then easing out across an apron to the plateau.
-	return lerpf(shallow,deep_height(x,z),1.0-pow(1.0-minf(u,1.0),2.5))
+	# Steepest just past the lip, so the shelf ends sharply, then easing out across an apron to the plateau.
+	var s:=u*u/(2.0*LIP_ROUNDING) if u<LIP_ROUNDING else u-LIP_ROUNDING*0.5
+	return lerpf(shallow,deep_height(x,z),1.0-pow(1.0-minf(s,1.0),2.5))
 
 ## The ground's height without the cliff's crags or the hole (used to place things on the shallows' floor).
 func height(x: float,z: float) -> float:
 	return _height(x,z,drop_position(x,z))
 
 ## How much the crags apply across the drop-off: none on the shelf or the plateau, most just below the lip.
+## They come in gradually over the first few metres past the lip: faster, and they push the rock out quicker than the
+## cliff falls away there, which turns the face inside out (triangles facing into the rock, seen as holes).
 func crag_weight(u: float) -> float:
 	if u<=0.0 or u>=1.0: return 0.0
-	return smoothstep(0.0,0.08,u)*pow(1.0-u,1.5)
+	return smoothstep(0.0,0.15,u)*pow(1.0-u,1.5)
 
 ## Positive outside the hole (in the rock around it and under its floor).
 func hole_distance(p: Vector3) -> float:

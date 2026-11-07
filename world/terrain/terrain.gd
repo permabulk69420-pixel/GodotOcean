@@ -2,7 +2,8 @@ class_name AbyssTerrain
 extends Node3D
 const GROUND_COLOUR=preload('res://world/terrain/textures/ground_colour.jpg')
 const GROUND_NORMAL=preload('res://world/terrain/textures/ground_normal.jpg')
-## Chunks further than this from the camera are not drawn (underwater fog has all but hidden them; collision is unaffected).
+## Chunks are not drawn once their nearest part is further than this from the camera (collision is unaffected).
+## game/main.gd keeps it at the distance where the underwater fog has hidden them; this is only the starting value.
 const VIEW_DISTANCE=110.0
 @export var settings: AbyssTerrainSettings
 var observer: Node3D
@@ -17,6 +18,8 @@ var generator: AbyssTerrainGenerator
 var fallback_jobs: Dictionary={}
 var completed: Array[AbyssTerrainChunk]=[]
 var result_mutex:=Mutex.new()
+var view_distance:=VIEW_DISTANCE
+var visuals: Array[MeshInstance3D]=[]
 
 func _ready() -> void:
 	if not settings: settings=AbyssTerrainSettings.new()
@@ -106,12 +109,23 @@ func _install(data: AbyssTerrainChunk) -> void:
 	visual.mesh=data.mesh
 	visual.material_override=material
 	visual.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	visual.visibility_range_end=VIEW_DISTANCE
+	visual.visibility_range_end=view_distance+_half_size(visual)
+	visuals.append(visual)
 	chunk.add_child(visual)
 	var collider:=CollisionShape3D.new()
 	collider.shape=data.collision
 	chunk.add_child(collider)
 	add_child(chunk)
+
+## Godot measures a visibility range to the middle of a chunk, so half its size is added: the nearest part of the chunk is
+## then what stops being drawn at the distance asked for, rather than a whole 32 m chunk vanishing 28 m nearer than that.
+func _half_size(visual: MeshInstance3D) -> float:
+	return visual.get_aabb().size.length()*0.5
+
+func set_view_distance(distance: float) -> void:
+	if is_equal_approx(distance,view_distance): return
+	view_distance=distance
+	for visual in visuals: visual.visibility_range_end=view_distance+_half_size(visual)
 
 func _exit_tree() -> void:
 	# Drain prefetched resources so their asynchronous load requests cannot outlive the scene.

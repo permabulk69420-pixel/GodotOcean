@@ -77,6 +77,33 @@ func check_coarse_seam() -> void:
 	check(coarse.size()>20,'Seam test must cover a real fine-to-coarse boundary')
 	check(unmatched==0,'The deep chunks must meet the shallows chunks without gaps')
 
+## Seen from straight above, the first surface at every point across the drop-off's lip must face up. Faces wound the
+## other way are culled when drawn, and show as holes through the ground (as the first version of the lip did).
+func check_lip_faces_up() -> void:
+	var settings:=AbyssTerrainSettings.new()
+	var space:=fixture.get_world_3d().direct_space_state
+	var rays:=0
+	var inward:=0
+	# A quarter metre off the voxel grid, so no ray runs exactly along the plane where two chunks meet.
+	var x:=settings.shelf_edge-settings.shelf_wobble-8.0+0.25
+	while x<settings.shelf_edge+settings.shelf_wobble+20.0:
+		for zi in range(-127,128):
+			var query:=PhysicsRayQueryParameters3D.create(Vector3(x,2,zi+0.5),Vector3(x,-260,zi+0.5),1)
+			query.hit_back_faces=true
+			var hit:=space.intersect_ray(query)
+			if hit.is_empty() or hit.face_index<0: continue
+			var faces: PackedVector3Array=(hit.collider.get_child(1) as CollisionShape3D).shape.get_faces()
+			var i: int=hit.face_index*3
+			rays+=1
+			# Drawn front is clockwise: its normal is (c - a) x (b - a).
+			if (faces[i+2]-faces[i]).cross(faces[i+1]-faces[i]).y<=0.0:
+				inward+=1
+				if inward<=5: print('  turned into the rock at ',hit.position)
+		x+=0.5
+	print('Lip from above: ',rays,' rays; ',inward,' first hits on faces turned into the rock')
+	check(rays>10000,'Lip check must cover the whole drop-off')
+	check(inward==0,'Every surface seen from above across the lip must face up (no holes)')
+
 func run() -> void:
 	check_surface_integrity()
 	check_coarse_seam()
@@ -90,6 +117,7 @@ func run() -> void:
 		OS.delay_msec(1)
 	check(terrain.all_ready,'Baked terrain must finish loading')
 	await frames(3)
+	check_lip_faces_up()
 	var generator:=AbyssTerrainGenerator.new()
 	for route in generator.routes:
 		for p in route: check(generator.density(p)< -2.0,'Cave network must have continuous swimmable clearance')
