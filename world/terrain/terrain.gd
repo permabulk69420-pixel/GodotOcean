@@ -2,9 +2,10 @@ class_name AbyssTerrain
 extends Node3D
 ## The sea floor, drawn as a quadtree of square height-map tiles around the camera: small and detailed close by,
 ## doubling in size (and halving in detail) with distance. Every tile is the same 32 x 32 grid, so a far 1 km tile
-## costs what a near 64 m one does. Buried skirts hide the joins between tiles of different detail. Tiles are built on
-## a worker thread, one at a time, and kept for reuse; the set on screen only changes once every tile in the new set
-## is ready, so nothing goes missing in between. Close tiles get collision, built from the same triangles.
+## costs what a near 64 m one does. Each tile blends into the shape of the next coarser one with distance, so
+## changing detail is not seen and neighbours of different detail meet; buried skirts cover any gap left. Tiles are
+## built on worker threads and kept for reuse; a tile on screen is only swapped once every tile replacing it is ready,
+## so nothing goes missing in between. Close tiles get collision, built from the same triangles.
 
 const GROUND_COLOUR=preload('res://world/terrain/textures/ground_colour.jpg')
 const GROUND_NORMAL=preload('res://world/terrain/textures/ground_normal.jpg')
@@ -17,11 +18,14 @@ const SEGMENTS:=32
 ## once the camera is this much further than that (so it does not flick back and forth at the line).
 const SPLIT:=1.25
 const HYSTERESIS:=1.15
-## Tiles further than this are not built at all: under water the camera sees 150 m, and from above the water the sea
-## floor is not drawn.
-const VIEW_RANGE:=220.0
-## How many tiles one background task builds (about 3 ms each on a desktop).
+## The whole map is always there: far away it is a handful of large, coarse tiles (a 1 km tile costs what a near
+## 64 m one does), so nothing ever appears at the edge of what has loaded. Tiles a little finer than needed are built
+## ahead of time, for the camera this many times closer than it is (as Oasis does), so that when a tile splits as you
+## approach, its finer tiles are usually ready and it changes over straight away.
+const LEAD:=1.35
+## How many tiles one background task builds (about 3 ms each on a desktop), and how many such tasks run at once.
 const TILES_PER_JOB:=6
+const JOBS:=3
 ## The tiles wanted are worked out again once the camera has moved this far.
 const REFRESH_DISTANCE:=8.0
 ## Full-detail tiles within this distance of the camera get collision (one built per frame).
@@ -31,8 +35,6 @@ const CACHE_LIMIT:=500
 
 @export var settings: AbyssTerrainSettings
 var observer: Node3D
-## VIEW_RANGE, unless something (a debug view) wants to see further.
-var view_range:=VIEW_RANGE
 var world: AbyssWorldMap
 var hole: AbyssHole
 var material: ShaderMaterial
@@ -44,11 +46,13 @@ var all_ready:=false
 ## Tiles on screen: key -> {size, x, z, body, collider}.
 var chunks:={}
 var _wanted:={}
+## Tiles not wanted yet but soon (see LEAD), built after the wanted ones.
+var _ahead:={}
 var _split:={}
 var _cache:={}
 var _pending: Array[String]=[]
-var _job:=-1
-var _job_results: Array[Dictionary]=[]
+## Background tasks running: each {id, results}.
+var _jobs: Array[Dictionary]=[]
 var _centre:=Vector3.INF
 var _clock:=0
 ## Something changed (new tiles built, or a new set wanted), so what is on screen needs looking at again.
@@ -77,20 +81,23 @@ func _process(_delta: float) -> void:
 	if _centre==Vector3.INF or Vector2(centre.x,centre.z).distance_to(Vector2(_centre.x,_centre.z))>REFRESH_DISTANCE:
 		_centre=centre
 		_choose(centre)
-	if _job!=-1 and WorkerThreadPool.is_task_completed(_job):
-		WorkerThreadPool.wait_for_task_completion(_job)
-		_job=-1
-		for result in _job_results: _cache[result.key]=result
-		_job_results=[]
+	for job in _jobs.duplicate():
+		if not WorkerThreadPool.is_task_completed(job.id): continue
+		WorkerThreadPool.wait_for_task_completion(job.id)
+		_jobs.erase(job)
+		for result in job.results: _cache[result.key]=result
 		_dirty=true
-	if _job==-1:
+	while _jobs.size()<JOBS and not _pending.is_empty():
 		var batch:=[]
 		while not _pending.is_empty() and batch.size()<TILES_PER_JOB:
 			var key: String=_pending.pop_front()
-			if _wanted.has(key) and not _cache.has(key): batch.append([key,_wanted[key].size,_wanted[key].x,_wanted[key].z])
-		if not batch.is_empty(): _job=WorkerThreadPool.add_task(_build_job.bind(batch),false,'Terrain tiles')
+			var tile: Dictionary=_wanted.get(key,_ahead.get(key,{}))
+			if not tile.is_empty() and not _cache.has(key): batch.append([key,tile.size,tile.x,tile.z])
+		if batch.is_empty(): continue
+		var results: Array[Dictionary]=[]
+		_jobs.append({id=WorkerThreadPool.add_task(_build_job.bind(batch,results),true,'Terrain tiles'),results=results})
 	if _dirty: _update_display()
-	all_ready=_job==-1 and _pending.is_empty() and _shown_wanted==_wanted.size() and chunks.size()==_wanted.size()
+	all_ready=_shown_wanted==_wanted.size() and chunks.size()==_wanted.size()
 	_build_collision(centre)
 	hole.update(centre)
 	if not near_ready and all_ready:
@@ -120,22 +127,39 @@ func _choose(centre: Vector3) -> void:
 	for key in _wanted:
 		if not _cache.has(key): _pending.append(key)
 	_pending.sort_custom(func(a: String,b: String) -> bool: return _wanted[a].near<_wanted[b].near)
+	# Then the tiles that will be wanted soon (built after everything wanted now).
+	_ahead.clear()
+	var ahead:={}
+	var ahead_split:={}
+	z=-half
+	while z<half:
+		var x:=-half
+		while x<half:
+			_visit(top,x,z,centre,ahead,ahead_split,LEAD)
+			x+=root
+		z+=root
+	var later: Array[String]=[]
+	for key in ahead:
+		if not _cache.has(key) and not _wanted.has(key):
+			later.append(key)
+			_ahead[key]=ahead[key]
+	later.sort_custom(func(a: String,b: String) -> bool: return ahead[a].near<ahead[b].near)
+	_pending.append_array(later)
 	_trim_cache()
 
-func _visit(level: int,x: float,z: float,centre: Vector3,wanted: Dictionary,split: Dictionary) -> void:
+func _visit(level: int,x: float,z: float,centre: Vector3,wanted: Dictionary,split: Dictionary,lead:=1.0) -> void:
 	var size: float=SIZES[level]
 	var key:='%d:%d:%d'%[size,x,z]
 	var near:=Vector2(centre.x,centre.z).distance_to(Vector2(clampf(centre.x,x,x+size),clampf(centre.z,z,z+size)))
-	if near>view_range: return
 	if level>0:
-		var limit:=size*SPLIT*(HYSTERESIS if _split.has(key) else 1.0)
+		var limit:=size*SPLIT*lead*(HYSTERESIS if _split.has(key) else 1.0)
 		if near<limit:
 			split[key]=true
 			var h:=size*0.5
-			_visit(level-1,x,z,centre,wanted,split)
-			_visit(level-1,x+h,z,centre,wanted,split)
-			_visit(level-1,x,z+h,centre,wanted,split)
-			_visit(level-1,x+h,z+h,centre,wanted,split)
+			_visit(level-1,x,z,centre,wanted,split,lead)
+			_visit(level-1,x+h,z,centre,wanted,split,lead)
+			_visit(level-1,x,z+h,centre,wanted,split,lead)
+			_visit(level-1,x+h,z+h,centre,wanted,split,lead)
 			return
 	wanted[key]={size=size,x=x,z=z,near=near}
 
@@ -227,14 +251,12 @@ func _trim_cache() -> void:
 	old.sort_custom(func(a: String,b: String) -> bool: return _cache[a].get('used',0)<_cache[b].get('used',0))
 	for i in range(mini(old.size(),_cache.size()-CACHE_LIMIT)): _cache.erase(old[i])
 
-func _build_job(batch: Array) -> void:
+func _build_job(batch: Array,results: Array[Dictionary]) -> void:
 	var map:=AbyssWorldMap.new(settings)
-	var results: Array[Dictionary]=[]
 	for item in batch:
 		var result:=build_tile(map,item[1],item[2],item[3])
 		result.key=item[0]
 		results.append(result)
-	_job_results=results
 
 ## One tile's mesh arrays (and its triangles, for collision). Heights are sampled one step beyond the tile on every
 ## side so the normals at its edges match its neighbours'.
@@ -244,13 +266,16 @@ static func build_tile(map: AbyssWorldMap,size: float,x0: float,z0: float) -> Di
 	var side:=n+3
 	var h:=PackedFloat32Array()
 	var sand:=PackedFloat32Array()
+	var silt:=PackedFloat32Array()
 	h.resize(side*side)
 	sand.resize(side*side)
+	silt.resize(side*side)
 	for j in range(side):
 		for i in range(side):
 			var here:=map.sample(x0+(i-1)*step,z0+(j-1)*step)
 			h[i+side*j]=here.x
 			sand[i+side*j]=here.y
+			silt[i+side*j]=here.z
 	var vertices:=PackedVector3Array()
 	var normals:=PackedVector3Array()
 	var colours:=PackedColorArray()
@@ -263,8 +288,23 @@ static func build_tile(map: AbyssWorldMap,size: float,x0: float,z0: float) -> Di
 			var normal:=Vector3(h[c-1]-h[c+1],2.0*step,h[c-side]-h[c+side]).normalized()
 			normals.append(normal)
 			# Sand where the region is sandy and the ground faces up, rock elsewhere; sunlit everywhere; large lighter and
-			# darker patches (in the ambient occlusion channel) so the textures do not read as a repeating pattern.
-			colours.append(Color(smoothstep(0.5,0.88,normal.y)*sand[c],1.0,map.patch(x0+i*step,z0+j*step),1.0))
+			# darker patches (in the ambient occlusion channel) so the textures do not read as a repeating pattern; and how
+			# much of the sand is grey silt (in alpha).
+			colours.append(Color(smoothstep(0.5,0.88,normal.y)*sand[c],1.0,map.patch(x0+i*step,z0+j*step),silt[c]))
+	# Each vertex also carries the height the next coarser tile has there (its own height where that tile has a vertex,
+	# else halfway along that tile's edge or diagonal), and the distance from the camera by which it has fully become
+	# that: the shader blends towards it with distance, so a tile looks exactly like its coarser replacement by the time
+	# they swap, and its edges match a coarser neighbour's. The largest tiles never change, so they get 0 (no blend).
+	var morph:=PackedVector2Array()
+	var end:=size*2.0*SPLIT if size<SIZES[SIZES.size()-1] else 0.0
+	for j in range(stride):
+		for i in range(stride):
+			var c:=(i+1)+side*(j+1)
+			var target:=h[c]
+			if i%2==1 and j%2==0: target=(h[c-1]+h[c+1])*0.5
+			elif i%2==0 and j%2==1: target=(h[c-side]+h[c+side])*0.5
+			elif i%2==1 and j%2==1: target=(h[c+1-side]+h[c-1+side])*0.5
+			morph.append(Vector2(target,end))
 	for j in range(n):
 		for i in range(n):
 			var a:=i+stride*j
@@ -286,6 +326,7 @@ static func build_tile(map: AbyssWorldMap,size: float,x0: float,z0: float) -> Di
 			vertices.append(vertices[v]-Vector3(0.0,drop,0.0))
 			normals.append(normals[v])
 			colours.append(colours[v])
+			morph.append(morph[v]-Vector2(drop,0.0))
 		for k in range(edge.size()-1):
 			var a: int=edge[k]
 			var b: int=edge[k+1]
@@ -297,9 +338,10 @@ static func build_tile(map: AbyssWorldMap,size: float,x0: float,z0: float) -> Di
 	arrays[Mesh.ARRAY_VERTEX]=vertices
 	arrays[Mesh.ARRAY_NORMAL]=normals
 	arrays[Mesh.ARRAY_COLOR]=colours
+	arrays[Mesh.ARRAY_TEX_UV2]=morph
 	arrays[Mesh.ARRAY_INDEX]=indices
 	return {arrays=arrays,faces=faces}
 
 func _exit_tree() -> void:
-	if _job!=-1: WorkerThreadPool.wait_for_task_completion(_job)
-	_job=-1
+	for job in _jobs: WorkerThreadPool.wait_for_task_completion(job.id)
+	_jobs.clear()

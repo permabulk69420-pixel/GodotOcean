@@ -8,8 +8,9 @@ const XR_RENDER_SCALE := 0.8
 const XR_REFRESH_RATE := 90.0
 ## How soon meshes that have simpler versions drop to them: Godot's default is 1.
 const XR_LOD_THRESHOLD := 3.0
-## Underwater the fog has all but hidden anything past this, so the camera stops drawing there.
-const UNDERWATER_FAR := 150.0
+## How far the camera draws under the water. The terrain is always there out to the map's edge (coarse far away), so
+## it is drawn far out too, rather than stopping at a line you can see.
+const UNDERWATER_FAR := 3000.0
 ## Deeper than this the fog hides the water surface completely, so it is not drawn and its waves are not worked out
 ## (nor are the sunbeams drawn). It all comes back a little shallower, so hovering at the line cannot flicker it.
 const DEEP_HIDE_SURFACE := 60.0

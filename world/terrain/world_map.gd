@@ -22,17 +22,23 @@ const SHALLOWS_RADIUS := 170.0
 const SHALLOWS_EDGE := 60.0
 const SHALLOWS_DEPTH := -8.0
 ## offset: how far above (+) or below (-) the general depth the region sits; or depth, if it sits at a fixed depth.
+## hills: how far its rolling hills rise and fall (metres, before the hilliness that varies from place to place).
+## rocks: how much of its ground has rock outcrops on it (0 to 1), and rock_height about how tall they stand.
+## sand: how much of the ground between the outcrops is sand (steep ground is rock whatever this says); silt: how much
+## of that sand is dull grey silt rather than pale sand (so each region has its own colour).
 const REGIONS := [
-	{name='Reef terraces', centre=Vector2(-850, 380), offset=6.0, land='terraces', sand=0.55, cliff=false},
-	{name='Kelp plain', centre=Vector2(820, 420), offset=0.0, land='swells', sand=0.95, cliff=false},
-	{name='Dune sea', centre=Vector2(100, 1250), offset=0.0, land='dunes', sand=1.0, cliff=false},
-	{name='Canyons', centre=Vector2(-1200, -500), offset=10.0, land='canyons', sand=0.35, cliff=false},
-	{name='Spire field', centre=Vector2(1200, -500), offset=0.0, land='spires', sand=0.5, cliff=false},
-	{name='Northern slope', centre=Vector2(0, -700), offset=-8.0, land='ridges', sand=0.6, cliff=false},
-	{name='Abyssal plateau', centre=Vector2(0, -1500), depth=-230.0, land='plateau', sand=0.25, cliff=true},
-	{name='Sunken basin', centre=Vector2(-1350, 1300), offset=-40.0, land='swells', sand=0.8, cliff=false},
-	{name='Ridge flats', centre=Vector2(1350, 1300), offset=10.0, land='ridges', sand=0.7, cliff=false},
+	{name='Reef terraces', centre=Vector2(-850, 380), offset=6.0, land='terraces', sand=0.55, hills=18.0, rocks=0.45, rock_height=4.0, silt=0.1, cliff=false},
+	{name='Kelp plain', centre=Vector2(820, 420), offset=0.0, land='plain', sand=0.95, hills=20.0, rocks=0.28, rock_height=4.0, silt=0.15, cliff=false},
+	{name='Dune sea', centre=Vector2(100, 1250), offset=0.0, land='dunes', sand=1.0, hills=10.0, rocks=0.1, rock_height=2.5, silt=0.0, cliff=false},
+	{name='Canyons', centre=Vector2(-1200, -500), offset=10.0, land='canyons', sand=0.8, hills=10.0, rocks=0.35, rock_height=5.0, silt=0.5, cliff=false},
+	{name='Spire field', centre=Vector2(1200, -500), offset=0.0, land='stacks', sand=0.85, hills=12.0, rocks=0.3, rock_height=4.0, silt=0.45, cliff=false},
+	{name='Northern slope', centre=Vector2(0, -700), offset=-8.0, land='spurs', sand=0.75, hills=8.0, rocks=0.4, rock_height=4.0, silt=0.55, cliff=false},
+	{name='Abyssal plateau', centre=Vector2(0, -1500), depth=-230.0, land='plateau', sand=0.4, hills=8.0, rocks=0.55, rock_height=5.0, silt=0.85, cliff=true},
+	{name='Sunken basin', centre=Vector2(-1350, 1300), offset=-40.0, land='plain', sand=0.9, hills=32.0, rocks=0.25, rock_height=6.0, silt=0.65, cliff=false},
+	{name='Ridge flats', centre=Vector2(1350, 1300), offset=10.0, land='ridges', sand=0.9, hills=8.0, rocks=0.15, rock_height=3.0, silt=0.3, cliff=false},
 ]
+## The safe shallows' own ground (they take over from the regions near the spawn).
+const SHALLOWS := {land='shallows', sand=1.0, silt=0.0, hills=2.0, rocks=0.3, rock_height=1.5}
 ## How far the borders wander (metres), and how wide the blend across a border is (in the difference of distances to
 ## the two centres; the band on the ground is about half that).
 const WARP := 280.0
@@ -41,9 +47,6 @@ const BLEND := 70.0
 ## which a height map cannot draw well).
 const CLIFF_FROM := 0.15
 const CLIFF_TO := 0.85
-## Steep edges (the shallows' drop-off, cliff regions) get gullies cut into them up to this deep. Only down: nothing
-## sticks up out of the slope.
-const GULLIES := 9.0
 ## The trench: its centre line from just inside the shallows to the hole's rim, how wide its floor is, how steep its
 ## walls are (rise per metre out from the floor), and how far below the general depth its floor runs, from its start
 ## to its end.
@@ -68,19 +71,37 @@ var rolling := FastNoiseLite.new()
 var swell := FastNoiseLite.new()
 var channels := FastNoiseLite.new()
 var ridged := FastNoiseLite.new()
-var cells := FastNoiseLite.new()
-## The same cells as `cells`, but a random value for each (to pick which cells get a pillar or outcrop, and its size).
-var cell_values := FastNoiseLite.new()
 var detail := FastNoiseLite.new()
 var rim_noise := FastNoiseLite.new()
-var crags := FastNoiseLite.new()
 ## Large patches of lighter and darker ground, so the textures do not read as a repeating pattern.
 var patches := FastNoiseLite.new()
+## The rolling hills every region has, and how hilly it is from place to place.
+var hills := FastNoiseLite.new()
+var relief := FastNoiseLite.new()
+## Rock outcrops: where they stand (above a threshold), where they cluster, the bend in their outlines, and their
+## rough tops.
+var rocks := FastNoiseLite.new()
+var clusters := FastNoiseLite.new()
+var bend := FastNoiseLite.new()
+## Bends the landforms' shapes (smooth, so it never folds the ground over).
+var sway := FastNoiseLite.new()
+var rough := FastNoiseLite.new()
+var dune_noise := FastNoiseLite.new()
+var stack_field := FastNoiseLite.new()
 var _trench_line := PackedVector2Array()
 var _trench_length := 1.0
 var _trench_box := Rect2()
 var _distances := PackedFloat32Array()
 var _weights := PackedFloat32Array()
+# Worked out once per sample, shared by every region's ground there.
+var _wx := 0.0
+var _wz := 0.0
+var _fx := 0.0
+var _fz := 0.0
+var _hill := 0.0
+var _hilly := 0.0
+var _rock_field := 0.0
+var _cluster := 0.0
 
 func _init(config: AbyssTerrainSettings = null) -> void:
 	settings=config if config else AbyssTerrainSettings.new()
@@ -103,23 +124,36 @@ func _init(config: AbyssTerrainSettings = null) -> void:
 	ridged.frequency=0.006
 	ridged.fractal_type=FastNoiseLite.FRACTAL_RIDGED
 	ridged.fractal_octaves=3
-	cells.seed=s+17
-	cells.noise_type=FastNoiseLite.TYPE_CELLULAR
-	cells.frequency=0.011
-	cells.cellular_return_type=FastNoiseLite.RETURN_DISTANCE
-	cells.fractal_type=FastNoiseLite.FRACTAL_NONE
-	cell_values.seed=s+17
-	cell_values.noise_type=FastNoiseLite.TYPE_CELLULAR
-	cell_values.frequency=0.011
-	cell_values.cellular_return_type=FastNoiseLite.RETURN_CELL_VALUE
-	cell_values.fractal_type=FastNoiseLite.FRACTAL_NONE
 	rim_noise.seed=s+19
 	rim_noise.frequency=0.012
 	rim_noise.fractal_octaves=2
-	crags.seed=s+20
-	crags.frequency=0.022
-	crags.fractal_type=FastNoiseLite.FRACTAL_RIDGED
-	crags.fractal_octaves=3
+	hills.seed=s+22
+	hills.frequency=0.0035
+	hills.fractal_octaves=5
+	relief.seed=s+23
+	relief.frequency=0.0007
+	relief.fractal_octaves=2
+	rocks.seed=s+24
+	rocks.frequency=0.01
+	rocks.fractal_octaves=3
+	stack_field.seed=s+30
+	stack_field.frequency=0.006
+	stack_field.fractal_octaves=2
+	clusters.seed=s+25
+	clusters.frequency=0.003
+	clusters.fractal_octaves=2
+	bend.seed=s+26
+	bend.frequency=0.015
+	bend.fractal_octaves=1
+	sway.seed=s+29
+	sway.frequency=0.003
+	sway.fractal_octaves=2
+	rough.seed=s+27
+	rough.frequency=0.06
+	rough.fractal_octaves=2
+	dune_noise.seed=s+28
+	dune_noise.frequency=0.012
+	dune_noise.fractal_octaves=2
 	patches.seed=s+21
 	patches.frequency=0.006
 	patches.fractal_octaves=3
@@ -132,35 +166,45 @@ func _init(config: AbyssTerrainSettings = null) -> void:
 func height(x: float,z: float) -> float:
 	return sample(x,z).x
 
-## (height, sand): sand is 1 where the floor is sand, 0 where it is rock (slope is taken into account when drawing).
+## (height, sand, silt): sand is 1 where the floor is sand, 0 where it is rock (slope is taken into account when
+## drawing); silt is how much of the sand is grey silt.
 ## patch() gives the large light and dark patches.
-func sample(x: float,z: float) -> Vector2:
+func sample(x: float,z: float) -> Vector3:
 	var general:=general_depth(x,z)
 	_blend(x,z)
-	var h:=0.0
-	var sand:=0.0
-	var steep:=0.0
+	_wx=x+sway.get_noise_2d(x,z)*45.0
+	_wz=z+sway.get_noise_2d(x+500.0,z-300.0)*45.0
+	_hilly=smoothstep(-0.45,0.55,relief.get_noise_2d(x,z))
+	_hill=hills.get_noise_2d(_wx,_wz)*(0.5+1.9*_hilly)
+	_fx=x+bend.get_noise_2d(x,z)*9.0
+	_fz=z+bend.get_noise_2d(x-700.0,z+900.0)*9.0
+	_rock_field=rocks.get_noise_2d(_fx,_fz)
+	_cluster=clusters.get_noise_2d(x,z)
+	var out:=Vector3.ZERO
 	for i in range(REGIONS.size()):
 		var w: float=_weights[i]
 		if w<0.002: continue
 		var region: Dictionary=REGIONS[i]
-		var level: float=region.depth if region.has('depth') else general+region.offset
-		h+=w*(level+_land(region,x,z))
-		sand+=w*region.sand
-		if region.cliff and w<0.998: steep=maxf(steep,4.0*w*(1.0-w))
+		out+=w*_ground(region,region.depth if region.has('depth') else general+region.offset,x,z)
 	# The shallows take over near the spawn, and give way across their edge.
-	var r:=_spawn_distance(x,z)
-	var s:=1.0-smoothstep(SHALLOWS_RADIUS,SHALLOWS_RADIUS+SHALLOWS_EDGE,r)
-	if s>0.0:
-		h=lerpf(h,SHALLOWS_DEPTH+_land({land='shallows'},x,z),s)
-		sand=lerpf(sand,1.0,s)
-		steep=maxf(steep,4.0*s*(1.0-s))
-	if steep>0.0: h-=steep*maxf(0.0,crags.get_noise_2d(x,z))*GULLIES
-	h+=detail.get_noise_2d(x,z)*0.5
+	var s:=1.0-smoothstep(SHALLOWS_RADIUS,SHALLOWS_RADIUS+SHALLOWS_EDGE,_spawn_distance(x,z))
+	if s>0.0: out=out.lerp(_ground(SHALLOWS,SHALLOWS_DEPTH,x,z),s)
+	var h:=out.x+detail.get_noise_2d(x,z)*0.5
 	h=_trench(x,z,h)
 	h=_edge(x,z,h)
 	h=_hole(x,z,h)
-	return Vector2(h,sand)
+	return Vector3(h,out.y,out.z)
+
+## A region's ground at its level: its rolling hills, its own landforms, and its rock outcrops. (height, sand, silt)
+func _ground(region: Dictionary,level: float,x: float,z: float) -> Vector3:
+	var land:=_land(region,x,z)
+	# Outcrops: where the rock field rises past a threshold (lower where the rocks cluster); the bigger ones stand taller.
+	var threshold:=lerpf(0.7,0.0,region.rocks)-_cluster*0.45
+	var outcrop:=smoothstep(threshold,threshold+0.2,_rock_field)
+	var top:=0.0
+	if outcrop>0.0: top=outcrop*region.rock_height*(1.0+(_rock_field-threshold)*4.0+rough.get_noise_2d(x,z)*0.4)
+	var rock:=clampf(land.y+smoothstep(threshold+0.02,threshold+0.1,_rock_field),0.0,1.0)
+	return Vector3(level+_hill*region.hills+land.x+top,region.sand*(1.0-rock),region.silt)
 
 ## How deep the floor is in general here, before regions add their own ups and downs.
 func general_depth(x: float,z: float) -> float:
@@ -209,59 +253,76 @@ func _blend(x: float,z: float) -> void:
 		sharpened+=_weights[i]
 	for i in range(REGIONS.size()): _weights[i]/=maxf(sharpened,0.0001)
 
-## A region's own ups and downs, around its level.
-func _land(region: Dictionary,x: float,z: float) -> float:
+## A region's own landforms: (height, how much is bare rock whatever the slope).
+func _land(region: Dictionary,x: float,z: float) -> Vector2:
 	match region.land:
 		'shallows':
-			# Gentle sand with long low sandbars, and in about one cell in five a low rounded rocky outcrop.
-			var bars:=(1.0-absf(swell.get_noise_2d(x*1.6,z*1.6)))*1.2
-			var pick:=cell_values.get_noise_2d(x,z)
-			var outcrop:=0.0
-			if pick>0.6:
-				var size:=0.08+(pick-0.6)*0.3
-				var f:=cells.get_noise_2d(x,z)+1.0
-				outcrop=pow(1.0-smoothstep(0.0,size,f),2.0)*(1.0+(pick-0.6)*3.0)
-			return rolling.get_noise_2d(x,z)*1.2+bars+outcrop
+			# Long low sandbars.
+			return Vector2((1.0-absf(swell.get_noise_2d(x*1.6,z*1.6)))*1.2,0.0)
+		'plain':
+			return Vector2(swell.get_noise_2d(_wx,_wz)*5.0,0.0)
 		'terraces':
-			# Stepped ledges: the ground rises and falls in 5 m steps with short slopes between them.
-			var v:=rolling.get_noise_2d(x*0.7,z*0.7)*18.0
-			var step:=floorf(v/5.0)
-			return (step+smoothstep(0.72,1.0,v/5.0-step))*5.0
-		'swells':
-			return swell.get_noise_2d(x,z)*6.0+rolling.get_noise_2d(x,z)*1.5
+			# Broad shelves, each a few metres above the next, with rocky steps between.
+			var v:=(swell.get_noise_2d(_wx,_wz)*0.5+0.5)*70.0
+			var step_height:=9.0+3.0*channels.get_noise_2d(x*0.4,z*0.4)
+			var k:=floorf(v/step_height)
+			var riser:=smoothstep(0.6,0.95,v/step_height-k)
+			return Vector2((k+riser)*step_height,4.0*riser*(1.0-riser))
 		'dunes':
-			# Long dunes across the current: a gentle back slope up to a sharp crest and a steep front, wandering a little.
-			var u:=(x*0.85+z*0.53)/95.0+swell.get_noise_2d(x,z)*1.6
-			var s:=u-floorf(u)
-			var shape:=pow(s/0.8,1.4) if s<0.8 else smoothstep(1.0,0.8,s)
-			return (shape*2.0-1.0)*(8.0+swell.get_noise_2d(x*0.5,z*0.5)*4.0)+rolling.get_noise_2d(x,z)*1.5
+			# Sand ridges with sharp crests, running mostly one way but bending, splitting and joining.
+			var d:=Vector2(_wx,_wz).rotated(0.55)
+			var n:=dune_noise.get_noise_2d(d.x,d.y*0.35)
+			var crest:=1.0-sqrt(n*n+0.003)
+			var size:=8.0+14.0*_hilly
+			return Vector2((crest*crest-0.4)*size,0.0)
 		'canyons':
-			# Flat-topped mesas cut by winding channels 90 m deep. Each wall comes down in two drops with a broad ledge
-			# between, each spread over enough ground for the 2 m grid to follow without jagged fins.
-			var c:=absf(channels.get_noise_2d(x,z))
-			var cut:=1.0-smoothstep(0.02,0.22,c)
-			var shaped:=smoothstep(0.0,0.42,cut)*0.45+smoothstep(0.55,1.0,cut)*0.55
-			return rolling.get_noise_2d(x,z)*3.0-shaped*90.0
-		'spires':
-			# A rocky floor with steep-sided pillars in a little under half the cells, each its own width and height,
-			# thickest where the field is densest. Warped, so each pillar is an irregular column rather than a round one.
-			var wx:=x+rolling.get_noise_2d(x*5.0,z*5.0)*14.0
-			var wz:=z+rolling.get_noise_2d(x*5.0+300.0,z*5.0)*14.0
-			var f:=cells.get_noise_2d(wx*0.6,wz*0.6)+1.0
-			var pick:=cell_values.get_noise_2d(wx*0.6,wz*0.6)
-			var density:=swell.get_noise_2d(x*0.7,z*0.7)
-			var pillar:=0.0
-			if pick>0.15-density*0.4:
-				var width:=0.08+absf(pick)*0.14
-				pillar=smoothstep(width,width*0.55,f)*(18.0+(pick*0.5+0.5)*55.0)*(1.0+crags.get_noise_2d(x*2.0,z*2.0)*0.12)
-			return rolling.get_noise_2d(x,z)*5.0+pillar
+			# Winding canyons cut into high ground, each wall coming down in two steps with a ledge between, and smaller
+			# side canyons. Measured in metres from each canyon's middle, so the walls are steep but never sheer.
+			var d:=_line_distance(channels,_wx*0.6,_wz*0.6,0.6)
+			var u:=clampf((d-(22.0+12.0*swell.get_noise_2d(x,z)))/75.0,0.0,1.0)
+			var deep:=1.0-(smoothstep(0.0,0.42,u)*0.55+smoothstep(0.58,1.0,u)*0.45)
+			var side:=1.0-smoothstep(5.0,30.0,_line_distance(channels,_wx*1.8+400.0,_wz*1.8,1.8))
+			return Vector2(-maxf(deep*60.0,side*side*(3.0-2.0*side)*18.0),0.0)
+		'stacks':
+			# Clusters of tall rock stacks of every size, rough-topped. Their sides are measured in metres in from each
+			# stack's outline, so they are steep but never sheer.
+			var t:=0.3-_cluster*0.25
+			var inside:=_signed_distance(stack_field,_fx,_fz,1.0,t)
+			if inside<=0.0: return Vector2.ZERO
+			var tall:=12.0+22.0*_hilly+rough.get_noise_2d(x*0.3,z*0.3)*8.0
+			var m:=smoothstep(0.0,tall*0.5,inside)
+			return Vector2(m*(tall+minf(inside,40.0)*0.25+rough.get_noise_2d(x,z)*2.0),smoothstep(0.0,3.0,inside))
+		'spurs':
+			# Rocky spurs and gullies running down the slope.
+			var n:=ridged.get_noise_2d(_wx*0.9,_wz*0.3)
+			return Vector2((n*0.5+0.5)*14.0,0.0)
 		'plateau':
-			# Rugged, cracked rock.
-			var crack:=smoothstep(0.08,0.0,absf(channels.get_noise_2d(x*2.5,z*2.5)))*7.0
-			return rolling.get_noise_2d(x,z)*4.0-crack
+			# Blocky, stepped rock, cracked.
+			var v:=rolling.get_noise_2d(_wx*0.8,_wz*0.8)*30.0
+			var k:=floorf(v/6.0)
+			var crack:=smoothstep(0.1,0.0,absf(channels.get_noise_2d(_wx*2.5,_wz*2.5)))*6.0
+			return Vector2((k+smoothstep(0.62,1.0,v/6.0-k))*6.0-crack,0.4)
 		'ridges':
-			return rolling.get_noise_2d(x,z)*3.0+(ridged.get_noise_2d(x,z)*0.5+0.5)*12.0
-	return 0.0
+			# Long winding ridges standing out of the sand.
+			var n:=absf(channels.get_noise_2d(_wx*1.3,_wz*1.3))
+			var ridge:=1.0-smoothstep(0.0,0.12,n)
+			return Vector2(ridge*ridge*(12.0+8.0*swell.get_noise_2d(x*0.5,z*0.5)),smoothstep(0.55,0.9,ridge))
+	return Vector2.ZERO
+
+## Roughly how many metres (x, z) is from the line where noise (sampled at x, z, already scaled by scale from the
+## world) is zero: its value divided by how fast it changes.
+func _line_distance(noise: FastNoiseLite,x: float,z: float,scale: float) -> float:
+	var n:=noise.get_noise_2d(x,z)
+	var gx:=noise.get_noise_2d(x+scale,z)-n
+	var gz:=noise.get_noise_2d(x,z+scale)-n
+	return absf(n)/maxf(sqrt(gx*gx+gz*gz),0.0015)
+
+## Roughly how many metres inside (+) or outside (-) the outline where noise rises past threshold (x, z) is.
+func _signed_distance(noise: FastNoiseLite,x: float,z: float,scale: float,threshold: float) -> float:
+	var n:=noise.get_noise_2d(x,z)
+	var gx:=noise.get_noise_2d(x+scale,z)-n
+	var gz:=noise.get_noise_2d(x,z+scale)-n
+	return (n-threshold)/maxf(sqrt(gx*gx+gz*gz),0.003)
 
 func _trench(x: float,z: float,h: float) -> float:
 	if _trench_line.is_empty(): _trench_line=_smooth_line(TRENCH)

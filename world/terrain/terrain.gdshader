@@ -23,6 +23,8 @@ uniform sampler2D ground_normal : hint_normal, repeat_enable, filter_linear_mipm
 uniform float ground_tile_size = 20.0;
 uniform float ground_normal_strength = 1.0;
 uniform vec3 sand_tint = vec3(1.55, 1.5, 1.38);
+// Grey silt, mixed in by how silty the region is (vertex alpha).
+uniform vec3 silt_tint = vec3(0.55, 0.62, 0.6);
 // Rock (steep faces, and rocky regions): its own texture (Poly Haven rock_wall_02, CC0, 2K: weathered coastal rock),
 // projected from the side on steep faces and from above on level rock, blended between the two only across a narrow
 // band of slopes.
@@ -45,14 +47,22 @@ vec3 unpack_normal(vec4 texel, float strength) {
 varying vec3 world_position;
 varying vec3 world_normal;
 varying float sunlight;
+varying float silt;
 // Caustic brightness for the sun, worked out once per pixel in fragment() and used in light().
 varying float caustic;
 // The material's SPECULAR value, which light() cannot read directly.
 varying float specular_level;
 void vertex() {
+ // Terrain tiles blend towards the next coarser tile's shape with distance (UV2: its height here, and the distance
+ // by which the blend is complete; 0 means never), so a tile swapping for a coarser or finer one is not seen.
+ if (surface_kind == 0 && UV2.y > 0.0) {
+  float d = distance(VERTEX.xz, CAMERA_POSITION_WORLD.xz);
+  VERTEX.y = mix(VERTEX.y, UV2.x, smoothstep(0.7 * UV2.y, UV2.y, d));
+ }
  world_position=VERTEX;
  world_normal=NORMAL;
  sunlight=COLOR.g;
+ silt=COLOR.a;
 }
 void fragment() {
  AO = 1.0;
@@ -90,8 +100,10 @@ void fragment() {
  // Normal-map relief is hard to see through underwater fog beyond a few tens of metres.
  // Fade it smoothly between 14 and 28 m; skip the normal texture lookups past 28 m.
  float normal_detail = 1.0 - smoothstep(14.0, 28.0, terrain_distance);
- // 1 on level ground, 0 on rock and steep faces (baked into the vertex colour).
- float flat_amount = COLOR.r;
+ // 1 on level ground, 0 on rock and steep faces (baked into the vertex colour). Triangles steeper than about 60
+ // degrees are rock whatever their corners say, so the foot of a wall is not drawn as a row of sandy teeth.
+ vec3 face_n = normalize(cross(dFdy(world_position), dFdx(world_position)));
+ float flat_amount = COLOR.r * smoothstep(0.35, 0.55, abs(face_n.y));
  vec3 axis_sign = vec3(n.x < 0.0 ? -1.0 : 1.0, 1.0, n.z < 0.0 ? -1.0 : 1.0);
  bool along_x = abs(n.x) > abs(n.z);
  // Texture coordinates and their gradients are worked out up here, outside the branches, so every lookup below has
@@ -154,7 +166,7 @@ void fragment() {
   side_colour = mix(wall_colour, level_colour, from_above);
   side_n = normalize(mix(wall_n, level_n, from_above));
  }
- vec3 albedo = mix(side_colour * rock_tint, top_colour * sand_tint, flat_amount);
+ vec3 albedo = mix(side_colour * rock_tint, top_colour * mix(sand_tint, silt_tint, silt), flat_amount);
  ALBEDO = albedo * mix(1.0, mix(0.25, 1.0, sunlight), sun_shadow_strength);
  vec3 shaded_normal = normalize(mix(side_n, top_n, flat_amount));
  NORMAL = normalize((VIEW_MATRIX * vec4(shaded_normal, 0.0)).xyz);
