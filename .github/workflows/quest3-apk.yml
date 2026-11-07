@@ -67,6 +67,14 @@ jobs:
             echo "APP_NAME=Abyss Ocean Reef Range" >> "$GITHUB_ENV"
             echo "RELEASE_TITLE=Abyss Ocean — OpenGL reef visibility restored test" >> "$GITHUB_ENV"
           fi
+          # The wider shallows with the drop-off, deep plateau and hole: its own app, listed in abyss-current with the rest.
+          if [ "$GITHUB_REF_NAME" = "ccr-db6f07c2-0l01k6" ]; then
+            sed -i -E '/^(RELEASE_TAG|PACKAGE_SUFFIX|APP_NAME|RELEASE_TITLE)=/d' "$GITHUB_ENV"
+            echo "RELEASE_TAG=abyss-test-ccr-db6f07c2-0l01k6-opengl" >> "$GITHUB_ENV"
+            echo "PACKAGE_SUFFIX=gldeepplateau" >> "$GITHUB_ENV"
+            echo "APP_NAME=Abyss Ocean Deep Plateau" >> "$GITHUB_ENV"
+            echo "RELEASE_TITLE=Abyss Ocean — OpenGL deep plateau and hole test" >> "$GITHUB_ENV"
+          fi
 
       - uses: actions/setup-java@v4
         with:
@@ -246,4 +254,15 @@ jobs:
           cp artifacts/AbyssOcean-Godot472-Quest3.apk artifacts/AbyssOcean-ReefRange-Quest3.apk
           gh release view abyss-current > /dev/null
           gh release upload abyss-current artifacts/AbyssOcean-ReefRange-Quest3.apk --clobber
+          gh release view abyss-current --json assets --jq '.assets[].name'
+
+      - name: Attach the deep plateau test beside the existing OpenGL APKs
+        if: ${{ github.ref_name == 'ccr-db6f07c2-0l01k6' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cp artifacts/AbyssOcean-Godot472-Quest3.apk artifacts/AbyssOcean-DeepPlateau-Quest3.apk
+          gh release view abyss-current > /dev/null
+          gh release upload abyss-current artifacts/AbyssOcean-DeepPlateau-Quest3.apk --clobber
           gh release view abyss-current --json assets --jq '.assets[].name'
