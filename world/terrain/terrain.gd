@@ -8,8 +8,9 @@ const GROUND_COLOUR=preload('res://world/terrain/textures/ground_colour.jpg')
 const GROUND_NORMAL=preload('res://world/terrain/textures/ground_normal.jpg')
 ## The wanted blocks are worked out again once the camera has moved this far.
 const REFRESH_DISTANCE:=4.0
-## How many blocks may be meshed at once, and how many new meshes are put into the scene per frame.
-const MAX_JOBS:=3
+## How many blocks may be meshed at once (each takes a core away from the game while it runs), and how many new meshes
+## are put into the scene per frame.
+const MAX_JOBS:=1
 const INSTALLS_PER_FRAME:=2
 ## A block whose detail changes keeps its old mesh until the new meshes around it are all ready (so no gaps open
 ## between them), or this long at most (seconds).
@@ -20,7 +21,8 @@ var observer: Node3D
 var generator: AbyssTerrainGenerator
 var store: AbyssVoxelStore
 var material: ShaderMaterial
-## True once every block close enough to the camera to need collision has it.
+## True once the blocks around the start have their collision. Only that first load holds the player still: after it,
+## blocks keep their collision while they are remeshed, and new ones get it well before they are reached.
 var near_ready:=false
 ## True once every wanted block has its current mesh.
 var all_ready:=false
@@ -83,10 +85,12 @@ func _process(_delta: float) -> void:
 			if wanted.get(b+o,lod)>lod: coarse[o]=wanted[b+o]
 		running[b]={key=keys[b],task=WorkerThreadPool.add_task(_mesh.bind(b,lod,keys[b],coarse),false,'Terrain block')}
 	all_ready=_plan_task==-1 and not wanted.is_empty() and pending.is_empty() and running.is_empty() and _staged.is_empty() and _collision_queue.is_empty()
-	near_ready=_plan_task==-1 and not wanted.is_empty()
-	for b in _collision_blocks:
-		var entry: Dictionary=chunks.get(b,{})
-		if entry.get('key')!=keys.get(b) or (entry.has('faces') and not entry.get('collider')): near_ready=false
+	if not near_ready:
+		var ready:=_plan_task==-1 and not wanted.is_empty()
+		for b in _collision_blocks:
+			var entry: Dictionary=chunks.get(b,{})
+			if entry.get('key')!=keys.get(b) or (entry.has('faces') and not entry.get('collider')): ready=false
+		near_ready=ready
 
 ## Which blocks are wanted around this point and at what detail (worker thread: reads only the store's block list).
 func _make_plan(centre: Vector3) -> void:

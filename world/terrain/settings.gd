@@ -21,9 +21,9 @@ const DATA_VERSION := 1
 @export_group('Streaming')
 ## A block is drawn with 1 m detail while its nearest point is within the first distance of the camera, 2 m within the
 ## second, 4 m within the third, and not at all beyond that.
-@export var lod_ranges := PackedFloat32Array([40.0, 80.0, 160.0])
+@export var lod_ranges := PackedFloat32Array([32.0, 64.0, 110.0])
 ## Blocks within this distance of the camera also get collision (they are always at full detail there).
-@export var collision_range := 36.0
+@export var collision_range := 28.0
 
 @export_group('Drop-off and deep plateau')
 ## The shallows' shelf ends near this x (it wanders either side by shelf_wobble) and falls away to the deep plateau.
