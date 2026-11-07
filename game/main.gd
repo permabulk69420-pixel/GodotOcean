@@ -6,7 +6,7 @@ signal submerged_changed(submerged: bool)
 const XR_RENDER_SCALE := 0.8
 ## The headset's refresh rate (the Quest 3 offers 72, 80, 90 and 120). Every frame then has 1000 / rate milliseconds.
 const XR_REFRESH_RATE := 90.0
-## How soon meshes that have simpler versions (the reef, the mushroom, the seagrass) drop to them: Godot's default is 1.
+## How soon meshes that have simpler versions drop to them: Godot's default is 1.
 const XR_LOD_THRESHOLD := 3.0
 ## Underwater the fog has all but hidden anything past this, so the camera stops drawing there.
 const UNDERWATER_FAR := 150.0
@@ -30,9 +30,6 @@ const PHYSICAL_SKY_GL_SHADER := preload("res://world/physical_sky_gl.gdshader")
 @onready var sky_sun: DirectionalLight3D = $SkySun
 @onready var day_night: AbyssDayNight = $DayNight
 @onready var plankton: AbyssPlankton = $Plankton
-@onready var mushroom: AbyssMushroom = $Mushroom
-@onready var reef: AbyssReef = $Reef
-@onready var seagrass: Node3D = $Seagrass
 @onready var ambience: AbyssAmbience = $Ambience
 @onready var light_shafts: AbyssLightShafts = $LightShafts
 
@@ -44,7 +41,7 @@ var seabed_shown := true
 ## True while far enough down that the water surface is out of sight (see DEEP_HIDE_SURFACE).
 var deep := false
 var surface_far := 6000.0
-## The watch's performance test steps this: 0 everything shown, 1 no terrain, 2 no reef, 3 no seagrass, 4 none of them.
+## The watch's performance test steps this: 0 everything shown, 1 or 4 no terrain (2 and 3 were the old reef and seagrass).
 var seabed_test := 0
 ## The water surface. 0 (the default) draws it lit above the water and, below it, with its own cheap underside shader
 ## (world/ocean/shaders/underside.gdshader). The rest are for the watch's performance test: 1 the old underside, unlit (what
@@ -181,9 +178,7 @@ func _process(delta: float) -> void:
 		boosts.append(player.thrusters.throttles[i] * 1.5)
 	plankton.update(delta, camera.global_position, sources, boosts, day_night.daylight, submerged)
 	light_shafts.update(camera.global_position, day_night.daylight, submerged and not deep)
-	mushroom.set_daylight(day_night.daylight)
 	ocean.window_sky.bake(day_night.sun_direction, day_night.daylight)
-	reef.set_daylight(day_night.daylight)
 	ambience.update(delta, submerged, player.head_depth, player.thrusters.motors, player.thrusters.throttles)
 	if not cache_bound and ocean.wave_cache.ready:
 		ocean.material.set_shader_parameter("cached_displacement",ocean.wave_cache.displacement)
@@ -278,8 +273,6 @@ func set_terrain_transparent_test(on: bool) -> void:
 
 func apply_seabed_visibility() -> void:
 	terrain.visible = seabed_shown and seabed_test != 1 and seabed_test != 4
-	reef.visible = seabed_shown and seabed_test != 2 and seabed_test != 4
-	seagrass.visible = seabed_shown and seabed_test != 3 and seabed_test != 4
 
 func release_depth() -> void:
 	if is_instance_valid(ocean) and ocean.wave_cache: ocean.wave_cache.release()

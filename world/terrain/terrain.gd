@@ -1,280 +1,262 @@
 class_name AbyssTerrain
 extends Node3D
-## Streams the terrain around the camera (observer). The voxels come from the bake (see AbyssTerrainSettings and
-## AbyssVoxelStore); meshes are built from them on worker threads (AbyssVoxelMesher), in full detail close by and
-## coarser further out, and only blocks near the camera get collision. Blocks far behind are let go.
+## The sea floor, drawn as a quadtree of square height-map tiles around the camera: small and detailed close by,
+## doubling in size (and halving in detail) with distance. Every tile is the same 32 x 32 grid, so a far 1 km tile
+## costs what a near 64 m one does. Buried skirts hide the joins between tiles of different detail. Tiles are built on
+## a worker thread, one at a time, and kept for reuse; the set on screen only changes once every tile in the new set
+## is ready, so nothing goes missing in between. Close tiles get collision, built from the same triangles.
 
 const GROUND_COLOUR=preload('res://world/terrain/textures/ground_colour.jpg')
 const GROUND_NORMAL=preload('res://world/terrain/textures/ground_normal.jpg')
-## The wanted blocks are worked out again once the camera has moved this far.
-const REFRESH_DISTANCE:=4.0
-## How many blocks may be meshed at once (each takes a core away from the game while it runs), and how many new meshes
-## are put into the scene per frame.
-const MAX_JOBS:=1
-const INSTALLS_PER_FRAME:=2
-## A block whose detail changes keeps its old mesh until the new meshes around it are all ready (so no gaps open
-## between them), or this long at most (seconds).
-const SWAP_WAIT:=1.0
+## Tile sizes, nearest first. A 64 m tile has 2 m detail; a 1024 m one 32 m.
+const SIZES:=[64.0,128.0,256.0,512.0,1024.0]
+const SEGMENTS:=32
+## A tile splits into four when the camera is within this many times its own size of it, and joins up again only
+## once the camera is this much further than that (so it does not flick back and forth at the line).
+const SPLIT:=1.25
+const HYSTERESIS:=1.15
+## Tiles further than this are not built at all: under water the camera sees 150 m, and from above the water the sea
+## floor is not drawn.
+const VIEW_RANGE:=200.0
+## How many tiles one background task builds (about 3 ms each on a desktop).
+const TILES_PER_JOB:=6
+## The tiles wanted are worked out again once the camera has moved this far.
+const REFRESH_DISTANCE:=8.0
+## Full-detail tiles within this distance of the camera get collision (one built per frame).
+const COLLISION_RANGE:=40.0
+## Built tiles kept for when they are wanted again.
+const CACHE_LIMIT:=500
 
 @export var settings: AbyssTerrainSettings
 var observer: Node3D
-var generator: AbyssTerrainGenerator
-var store: AbyssVoxelStore
+var world: AbyssWorldMap
 var material: ShaderMaterial
-## True once the blocks around the start have their collision. Only that first load holds the player still: after it,
-## blocks keep their collision while they are remeshed, and new ones get it well before they are reached.
+## True once the first tiles around the start are on screen and those close by can be collided with. Only that first
+## load holds the player still.
 var near_ready:=false
-## True once every wanted block has its current mesh.
+## True when every wanted tile is on screen.
 var all_ready:=false
-## Blocks in the scene: block -> {lod, key, body, visual, collider, faces}.
+## Tiles on screen: key -> {size, x, z, body, collider}.
 var chunks:={}
-## Blocks wanted now, and their detail level.
-var wanted:={}
-var keys:={}
-var pending: Array[Vector3i]=[]
-var running:={}
-var _done: Array[Dictionary]=[]
-var _done_mutex:=Mutex.new()
-var _staged: Array[Dictionary]=[]
-var _staged_since:=0.0
+var _wanted:={}
+var _split:={}
+var _cache:={}
+var _pending: Array[String]=[]
+var _job:=-1
+var _job_results: Array[Dictionary]=[]
 var _centre:=Vector3.INF
-var _collision_blocks:={}
-var _collision_queue: Array[Vector3i]=[]
-var _neighbours: Array[Vector3i]=[]
-## Working out the wanted blocks runs on a worker thread; its result is applied on the next frame it is ready.
-var _plan_task:=-1
-var _plan:={}
+var _clock:=0
 
 func _ready() -> void:
 	if not settings: settings=AbyssTerrainSettings.new()
-	generator=AbyssTerrainGenerator.new(settings)
+	world=AbyssWorldMap.new(settings)
 	material=ShaderMaterial.new()
 	material.shader=load('res://world/terrain/terrain.gdshader')
 	material.set_shader_parameter('ground_colour',GROUND_COLOUR)
 	material.set_shader_parameter('ground_normal',GROUND_NORMAL)
-	var index: AbyssVoxelIndex=null
-	if ResourceLoader.exists('res://world/terrain/baked/index.tres'):
-		index=load('res://world/terrain/baked/index.tres')
-		if index.signature!=settings.signature(): index=null
-	store=AbyssVoxelStore.new(settings,index,generator)
-	for z in range(-1,2):
-		for y in range(-1,2):
-			for x in range(-1,2):
-				if x!=0 or y!=0 or z!=0: _neighbours.append(Vector3i(x,y,z))
 
 func focus() -> Vector3:
 	return observer.global_position if observer and observer.is_inside_tree() else Vector3.ZERO
 
 func _process(_delta: float) -> void:
 	var centre:=focus()
-	if _plan_task==-1 and (_centre==Vector3.INF or centre.distance_to(_centre)>REFRESH_DISTANCE):
+	if _centre==Vector3.INF or Vector2(centre.x,centre.z).distance_to(Vector2(_centre.x,_centre.z))>REFRESH_DISTANCE:
 		_centre=centre
-		_plan_task=WorkerThreadPool.add_task(_make_plan.bind(centre),false,'Terrain plan')
-	if _plan_task!=-1 and WorkerThreadPool.is_task_completed(_plan_task):
-		WorkerThreadPool.wait_for_task_completion(_plan_task)
-		_plan_task=-1
-		_apply(_plan)
-	_collect()
-	_build_collision()
-	while running.size()<MAX_JOBS and not pending.is_empty():
-		var b: Vector3i=pending.pop_front()
-		if not wanted.has(b) or running.has(b): continue
-		var lod: int=wanted[b]
-		var coarse:={}
-		for o in _neighbours:
-			if wanted.get(b+o,lod)>lod: coarse[o]=wanted[b+o]
-		running[b]={key=keys[b],task=WorkerThreadPool.add_task(_mesh.bind(b,lod,keys[b],coarse),false,'Terrain block')}
-	all_ready=_plan_task==-1 and not wanted.is_empty() and pending.is_empty() and running.is_empty() and _staged.is_empty() and _collision_queue.is_empty()
-	if not near_ready:
-		var ready:=_plan_task==-1 and not wanted.is_empty()
-		for b in _collision_blocks:
-			var entry: Dictionary=chunks.get(b,{})
-			if entry.get('key')!=keys.get(b) or (entry.has('faces') and not entry.get('collider')): ready=false
-		near_ready=ready
+		_choose(centre)
+	if _job!=-1 and WorkerThreadPool.is_task_completed(_job):
+		WorkerThreadPool.wait_for_task_completion(_job)
+		_job=-1
+		for result in _job_results: _cache[result.key]=result
+		_job_results=[]
+	if _job==-1:
+		var batch:=[]
+		while not _pending.is_empty() and batch.size()<TILES_PER_JOB:
+			var key: String=_pending.pop_front()
+			if _wanted.has(key) and not _cache.has(key): batch.append([key,_wanted[key].size,_wanted[key].x,_wanted[key].z])
+		if not batch.is_empty(): _job=WorkerThreadPool.add_task(_build_job.bind(batch),false,'Terrain tiles')
+	var ready:=_job==-1 and _pending.is_empty()
+	if ready and not all_ready: _swap()
+	all_ready=ready and chunks.size()==_wanted.size()
+	_build_collision(centre)
+	if not near_ready and all_ready:
+		near_ready=true
+		for key in chunks:
+			if _wants_collision(chunks[key],centre) and not chunks[key].get('collider'): near_ready=false
 
-## Which blocks are wanted around this point and at what detail (worker thread: reads only the store's block list).
-func _make_plan(centre: Vector3) -> void:
-	var ranges:=settings.lod_ranges
-	var far:=ranges[ranges.size()-1]
-	var size:=float(AbyssTerrainSettings.BLOCK)
-	var low:=Vector3i(((centre-Vector3.ONE*far)/size).floor())
-	var high:=Vector3i(((centre+Vector3.ONE*far)/size).floor())
-	var next:={}
-	var distances:={}
-	for z in range(low.z,high.z+1):
-		for y in range(low.y,high.y+1):
-			for x in range(low.x,high.x+1):
-				var b:=Vector3i(x,y,z)
-				if not store.surface_blocks.has(b): continue
-				var d:=_distance(centre,b)
-				if d>far: continue
-				var lod:=0
-				while d>ranges[lod]: lod+=1
-				next[b]=lod
-				distances[b]=d
-	# Neighbours (sides, edges and corners) at most one level apart: a far block next to a near one gets finer.
-	var changed:=true
-	while changed:
-		changed=false
-		for b in next:
-			for o in _neighbours:
-				var other: int=next.get(b+o,99)
-				if other+1<next[b]:
-					next[b]=other+1
-					changed=true
-	var plan_keys:={}
-	for b in next:
-		var mask:=0
-		for i in range(_neighbours.size()):
-			if next.get(b+_neighbours[i],-1)>next[b]: mask|=1<<i
-		plan_keys[b]=next[b]|(mask<<2)
-	var collision:={}
-	for b in next:
-		if distances[b]<=settings.collision_range: collision[b]=true
-	_plan={centre=centre,wanted=next,keys=plan_keys,distances=distances,collision=collision}
+## Which tiles should be on screen for a camera here: a quadtree over the whole map.
+func _choose(centre: Vector3) -> void:
+	var wanted:={}
+	var split:={}
+	var half:=settings.world_size*0.5
+	var top:=SIZES.size()-1
+	var root: float=SIZES[top]
+	var z:=-half
+	while z<half:
+		var x:=-half
+		while x<half:
+			_visit(top,x,z,centre,wanted,split)
+			x+=root
+		z+=root
+	_wanted=wanted
+	_split=split
+	all_ready=false
+	_pending.clear()
+	for key in _wanted:
+		if not _cache.has(key): _pending.append(key)
+	_pending.sort_custom(func(a: String,b: String) -> bool: return _wanted[a].near<_wanted[b].near)
+	_trim_cache()
 
-## Puts a plan into effect: what needs meshing (nearest and finest first), what to let go, and which blocks collide.
-func _apply(plan: Dictionary) -> void:
-	wanted=plan.wanted
-	keys=plan.keys
-	var distances: Dictionary=plan.distances
-	pending.clear()
-	for b in wanted:
-		if chunks.get(b,{}).get('key')==keys[b] or running.get(b,{}).get('key')==keys[b]: continue
-		pending.append(b)
-	pending.sort_custom(func(a: Vector3i,b: Vector3i) -> bool:
-		return wanted[a]<wanted[b] or (wanted[a]==wanted[b] and distances[a]<distances[b]))
-	for b in chunks.keys():
-		if not wanted.has(b): _remove(b)
-	_collision_blocks=plan.collision
-	for b in chunks: _set_collision(b,_collision_blocks.has(b) and chunks[b].lod==0)
-	store.forget_beyond(plan.centre,settings.lod_ranges[settings.lod_ranges.size()-1]+64.0)
+func _visit(level: int,x: float,z: float,centre: Vector3,wanted: Dictionary,split: Dictionary) -> void:
+	var size: float=SIZES[level]
+	var key:='%d:%d:%d'%[size,x,z]
+	var near:=Vector2(centre.x,centre.z).distance_to(Vector2(clampf(centre.x,x,x+size),clampf(centre.z,z,z+size)))
+	if near>VIEW_RANGE: return
+	if level>0:
+		var limit:=size*SPLIT*(HYSTERESIS if _split.has(key) else 1.0)
+		if near<limit:
+			split[key]=true
+			var h:=size*0.5
+			_visit(level-1,x,z,centre,wanted,split)
+			_visit(level-1,x+h,z,centre,wanted,split)
+			_visit(level-1,x,z+h,centre,wanted,split)
+			_visit(level-1,x+h,z+h,centre,wanted,split)
+			return
+	wanted[key]={size=size,x=x,z=z,near=near}
 
-func _distance(p: Vector3,b: Vector3i) -> float:
-	var size:=float(AbyssTerrainSettings.BLOCK)
-	var lo:=Vector3(b)*size
-	return p.distance_to(p.clamp(lo,lo+Vector3.ONE*size))
+## Puts the wanted set on screen in one go, reusing tiles already there.
+func _swap() -> void:
+	for key in chunks.keys():
+		if not _wanted.has(key):
+			chunks[key].body.queue_free()
+			chunks.erase(key)
+	for key in _wanted:
+		if chunks.has(key): continue
+		var built: Dictionary=_cache[key]
+		built.used=_clock
+		if not built.has('mesh'):
+			var mesh:=ArrayMesh.new()
+			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,built.arrays)
+			built.mesh=mesh
+		var body:=StaticBody3D.new()
+		body.name='Tile_%s'%key.replace(':','_')
+		body.collision_layer=1
+		body.collision_mask=0
+		var visual:=MeshInstance3D.new()
+		visual.mesh=built.mesh
+		visual.material_override=material
+		visual.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		body.add_child(visual)
+		add_child(body)
+		chunks[key]={size=_wanted[key].size,x=_wanted[key].x,z=_wanted[key].z,body=body}
+	_clock+=1
 
-func _mesh(b: Vector3i,lod: int,key: int,coarse: Dictionary) -> void:
-	var result:=AbyssVoxelMesher.build(store,b,lod,coarse)
-	result.block=b
-	result.lod=lod
-	result.key=key
-	_done_mutex.lock()
-	_done.append(result)
-	_done_mutex.unlock()
+func _wants_collision(tile: Dictionary,centre: Vector3) -> bool:
+	if tile.size!=SIZES[0]: return false
+	var x: float=tile.x
+	var z: float=tile.z
+	var near:=Vector2(centre.x,centre.z).distance_to(Vector2(clampf(centre.x,x,x+tile.size),clampf(centre.z,z,z+tile.size)))
+	return near<COLLISION_RANGE
 
-## Puts finished meshes into the scene: new blocks straight away; changed ones are built hidden as they arrive and
-## all swapped in together once their neighbours are done (the swap itself only shows and hides nodes).
-func _collect() -> void:
-	_done_mutex.lock()
-	var results:=_done.duplicate()
-	_done.clear()
-	_done_mutex.unlock()
-	for r in results:
-		var b: Vector3i=r.block
-		if running.has(b):
-			WorkerThreadPool.wait_for_task_completion(running[b].task)
-			running.erase(b)
-		if keys.get(b)!=r.key: continue
-		var entry:=_build(r)
-		if chunks.has(b):
-			if _staged.is_empty(): _staged_since=Time.get_ticks_msec()/1000.0
-			_staged.append(entry)
-		else:
-			_commit(entry)
-	if not _staged.is_empty() and ((pending.is_empty() and running.is_empty()) or Time.get_ticks_msec()/1000.0-_staged_since>SWAP_WAIT):
-		for entry in _staged:
-			if keys.get(entry.block)==entry.key: _commit(entry)
-			elif entry.get('body'): entry.body.queue_free()
-		_staged.clear()
-
-## A block's node, built but not yet shown.
-func _build(r: Dictionary) -> Dictionary:
-	var b: Vector3i=r.block
-	var entry:={block=b,lod=r.lod,key=r.key}
-	var indices: PackedInt32Array=r.indices
-	if indices.is_empty(): return entry
-	var arrays:=[]
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX]=r.vertices
-	arrays[Mesh.ARRAY_NORMAL]=r.normals
-	arrays[Mesh.ARRAY_COLOR]=r.colours
-	arrays[Mesh.ARRAY_INDEX]=indices
-	var mesh:=ArrayMesh.new()
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
-	var body:=StaticBody3D.new()
-	body.name='Block_%s_%s_%s_%s'%[b.x,b.y,b.z,r.key]
-	body.collision_layer=1
-	body.collision_mask=0
-	body.visible=false
-	var visual:=MeshInstance3D.new()
-	visual.mesh=mesh
-	visual.material_override=material
-	visual.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	body.add_child(visual)
-	add_child(body)
-	entry.body=body
-	entry.visual=visual
-	if r.has('faces'): entry.faces=r.faces
-	return entry
-
-## Shows a built block in place of whatever was there.
-func _commit(entry: Dictionary) -> void:
-	var b: Vector3i=entry.block
-	# Close by, a block's own full-detail voxels do not change when only its neighbours' detail does, so the collision
-	# it already has still fits: keep it rather than build it again.
-	var old: Dictionary=chunks.get(b,{})
-	var kept_shape: Shape3D=old.collider.shape if old.get('lod')==0 and entry.lod==0 and old.get('collider') else null
-	_remove(b)
-	if entry.get('body'):
-		entry.body.visible=true
-		if kept_shape: _attach(entry,kept_shape)
-	chunks[b]=entry
-	_set_collision(b,_collision_blocks.has(b) and entry.lod==0)
-
-## Collision is wanted (or not) for a block; new shapes are built by _build_collision, one a frame.
-func _set_collision(b: Vector3i,on: bool) -> void:
-	var entry: Dictionary=chunks[b]
-	if on and entry.has('faces') and not entry.get('collider'):
-		if not _collision_queue.has(b): _collision_queue.append(b)
-	elif not on and entry.get('collider'):
-		entry.collider.queue_free()
-		entry.erase('collider')
-
-## Builds the nearest waiting block's collision. A full-detail block's shape takes several milliseconds to build, so
-## only one is built a frame.
-func _build_collision() -> void:
-	if _collision_queue.is_empty(): return
-	var centre:=focus()
-	_collision_queue.sort_custom(func(a: Vector3i,b: Vector3i) -> bool: return _distance(centre,a)<_distance(centre,b))
-	while not _collision_queue.is_empty():
-		var b: Vector3i=_collision_queue.pop_front()
-		var entry: Dictionary=chunks.get(b,{})
-		if not entry.has('faces') or entry.get('collider') or entry.lod!=0 or not _collision_blocks.has(b): continue
-		var shape:=ConcavePolygonShape3D.new()
-		shape.backface_collision=true
-		shape.set_faces(entry.faces)
-		_attach(entry,shape)
-		return
-
-func _attach(entry: Dictionary,shape: Shape3D) -> void:
+## Gives the nearest close tile without collision its collision (one a frame), and takes it off tiles left behind.
+func _build_collision(centre: Vector3) -> void:
+	var best:=''
+	var best_near:=INF
+	for key in chunks:
+		var tile: Dictionary=chunks[key]
+		var want:=_wants_collision(tile,centre)
+		if not want and tile.get('collider'):
+			tile.collider.queue_free()
+			tile.erase('collider')
+		elif want and not tile.get('collider'):
+			var near:=Vector2(centre.x,centre.z).distance_to(Vector2(tile.x+tile.size*0.5,tile.z+tile.size*0.5))
+			if near<best_near:
+				best_near=near
+				best=key
+	if best=='': return
+	var shape:=ConcavePolygonShape3D.new()
+	shape.backface_collision=true
+	shape.set_faces(_cache[best].faces)
 	var collider:=CollisionShape3D.new()
 	collider.shape=shape
-	entry.body.add_child(collider)
-	entry.collider=collider
+	chunks[best].body.add_child(collider)
+	chunks[best].collider=collider
 
-func _remove(b: Vector3i) -> void:
-	if not chunks.has(b): return
-	var entry: Dictionary=chunks[b]
-	if entry.get('body'): entry.body.queue_free()
-	chunks.erase(b)
+func _trim_cache() -> void:
+	if _cache.size()<=CACHE_LIMIT: return
+	var old:=[]
+	for key in _cache:
+		if not _wanted.has(key) and not chunks.has(key): old.append(key)
+	old.sort_custom(func(a: String,b: String) -> bool: return _cache[a].get('used',0)<_cache[b].get('used',0))
+	for i in range(mini(old.size(),_cache.size()-CACHE_LIMIT)): _cache.erase(old[i])
+
+func _build_job(batch: Array) -> void:
+	var map:=AbyssWorldMap.new(settings)
+	var results: Array[Dictionary]=[]
+	for item in batch:
+		var result:=build_tile(map,item[1],item[2],item[3])
+		result.key=item[0]
+		results.append(result)
+	_job_results=results
+
+## One tile's mesh arrays (and its triangles, for collision). Heights are sampled one step beyond the tile on every
+## side so the normals at its edges match its neighbours'.
+static func build_tile(map: AbyssWorldMap,size: float,x0: float,z0: float) -> Dictionary:
+	var n:=SEGMENTS
+	var step:=size/n
+	var side:=n+3
+	var h:=PackedFloat32Array()
+	h.resize(side*side)
+	for j in range(side):
+		for i in range(side):
+			h[i+side*j]=map.height(x0+(i-1)*step,z0+(j-1)*step)
+	var vertices:=PackedVector3Array()
+	var normals:=PackedVector3Array()
+	var colours:=PackedColorArray()
+	var indices:=PackedInt32Array()
+	var stride:=n+1
+	for j in range(stride):
+		for i in range(stride):
+			var c:=(i+1)+side*(j+1)
+			vertices.append(Vector3(x0+i*step,h[c],z0+j*step))
+			var normal:=Vector3(h[c-1]-h[c+1],2.0*step,h[c-side]-h[c+side]).normalized()
+			normals.append(normal)
+			# Sand where it faces up, rock on the slopes; sunlit and open everywhere (the shader reads these).
+			colours.append(Color(smoothstep(0.35,0.86,normal.y),1.0,1.0,1.0))
+	for j in range(n):
+		for i in range(n):
+			var a:=i+stride*j
+			var b:=a+1
+			var c:=a+stride
+			var d:=c+1
+			# Godot draws the clockwise side, which faces up here.
+			indices.append_array(PackedInt32Array([a,b,c,b,d,c]))
+	var faces:=PackedVector3Array()
+	faces.resize(indices.size())
+	for f in range(indices.size()): faces[f]=vertices[indices[f]]
+	# Skirts: each edge hangs down a little (more on coarse tiles), drawn from both sides, so the odd crack where a
+	# coarser neighbour's edge cuts the corner does not show through.
+	var drop:=minf(24.0,2.4+0.012*step*step)
+	var edges:=[range(0,stride),range(n,stride*stride,stride),range(stride*n,stride*stride),range(0,stride*stride,stride)]
+	for edge in edges:
+		var start:=vertices.size()
+		for v in edge:
+			vertices.append(vertices[v]-Vector3(0.0,drop,0.0))
+			normals.append(normals[v])
+			colours.append(colours[v])
+		for k in range(edge.size()-1):
+			var a: int=edge[k]
+			var b: int=edge[k+1]
+			var la:=start+k
+			var lb:=start+k+1
+			indices.append_array(PackedInt32Array([a,b,lb,a,lb,la,a,lb,b,a,la,lb]))
+	var arrays:=[]
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX]=vertices
+	arrays[Mesh.ARRAY_NORMAL]=normals
+	arrays[Mesh.ARRAY_COLOR]=colours
+	arrays[Mesh.ARRAY_INDEX]=indices
+	return {arrays=arrays,faces=faces}
 
 func _exit_tree() -> void:
-	for entry in _staged:
-		if entry.get('body'): entry.body.queue_free()
-	_staged.clear()
-	if _plan_task!=-1: WorkerThreadPool.wait_for_task_completion(_plan_task)
-	_plan_task=-1
-	for b in running: WorkerThreadPool.wait_for_task_completion(running[b].task)
-	running.clear()
+	if _job!=-1: WorkerThreadPool.wait_for_task_completion(_job)
+	_job=-1

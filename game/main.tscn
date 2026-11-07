@@ -1,4 +1,4 @@
-[gd_scene load_steps=15 format=3]
+[gd_scene load_steps=12 format=3]
 
 [ext_resource type="Script" path="res://game/main.gd" id="1"]
 [ext_resource type="Script" path="res://world/ocean/ocean.gd" id="2"]
@@ -10,10 +10,7 @@
 [ext_resource type="Script" path="res://player/thrusters/hand_thrusters.gd" id="8"]
 [ext_resource type="Script" path="res://world/day_night.gd" id="9"]
 [ext_resource type="Script" path="res://world/plankton/plankton.gd" id="10"]
-[ext_resource type="Script" path="res://world/landmark/mushroom.gd" id="11"]
-[ext_resource type="Script" path="res://world/vegetation/seagrass.gd" id="12"]
 [ext_resource type="Script" path="res://world/audio/ambience.gd" id="13"]
-[ext_resource type="Script" path="res://world/reef/reef.gd" id="14"]
 [ext_resource type="Script" path="res://world/ocean/light_shafts.gd" id="15"]
 [ext_resource type="Script" path="res://player/watch/watch.gd" id="16"]
 
@@ -118,17 +115,8 @@ script = ExtResource("9")
 [node name="Plankton" type="MultiMeshInstance3D" parent="."]
 script = ExtResource("10")
 
-[node name="Mushroom" type="Node3D" parent="."]
-script = ExtResource("11")
-
-[node name="Seagrass" type="Node3D" parent="."]
-script = ExtResource("12")
-
 [node name="Ambience" type="Node3D" parent="."]
 script = ExtResource("13")
-
-[node name="Reef" type="Node3D" parent="."]
-script = ExtResource("14")
 
 [node name="LightShafts" type="MultiMeshInstance3D" parent="."]
 script = ExtResource("15")

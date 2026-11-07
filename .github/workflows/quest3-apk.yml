@@ -68,7 +68,7 @@ jobs:
             echo "RELEASE_TITLE=Abyss Ocean — OpenGL reef visibility restored test" >> "$GITHUB_ENV"
           fi
           # The wider shallows with the drop-off, deep plateau and hole: its own app, listed in abyss-current with the rest.
-          if [ "$GITHUB_REF_NAME" = "ccr-db6f07c2-0l01k6" ]; then
+          if [ "$GITHUB_REF_NAME" = "ccr-db6f07c2-0l01k6" ] || [ "$GITHUB_REF_NAME" = "ccr-db6f07c2-heightmap" ]; then
             sed -i -E '/^(RELEASE_TAG|PACKAGE_SUFFIX|APP_NAME|RELEASE_TITLE)=/d' "$GITHUB_ENV"
             echo "RELEASE_TAG=abyss-test-ccr-db6f07c2-0l01k6-opengl" >> "$GITHUB_ENV"
             echo "PACKAGE_SUFFIX=gldeepplateau" >> "$GITHUB_ENV"
@@ -136,20 +136,10 @@ jobs:
           sed -i "s/package\/name=\"Abyss Ocean\"/package\/name=\"${APP_NAME}\"/" export_presets.cfg
           grep -n '^version/code=' export_presets.cfg
 
-      - name: Restore the baked terrain
-        uses: actions/cache@v4
-        with:
-          path: world/terrain/baked
-          key: terrain-bake-${{ hashFiles('world/terrain/*.gd') }}
-
       - name: Import and build Quest 3 APK
         run: |
           mkdir -p artifacts
           godot --headless --editor --audio-driver Dummy --path . --import
-          if [ ! -f world/terrain/baked/index.tres ]; then
-            godot --headless --path . --script res://world/terrain/bake.gd
-            godot --headless --editor --path . --import
-          fi
           if [ "$FULL_TESTS" = "true" ]; then
           godot --headless --path . --fixed-fps 60 --script res://.github/tests/shallows.gd > "$RUNNER_TEMP/shallows-physics.log" 2>&1 || { cat "$RUNNER_TEMP/shallows-physics.log"; exit 1; }
           cat "$RUNNER_TEMP/shallows-physics.log"
@@ -224,9 +214,6 @@ jobs:
               assert 'lib/arm64-v8a/libgodotopenxrmeta.so' in files
               assert 'assets/game/main.gdc' in files
               assert 'assets/player/swimmer.gdc' in files
-              print('Packaged terrain index:', [f for f in files if 'terrain/baked/index' in f])
-              assert any(f in files for f in ['assets/world/terrain/baked/index.tres', 'assets/world/terrain/baked/index.tres.remap'])
-              assert any(f.startswith('assets/world/terrain/baked/') and f.endswith('.res') for f in files)
               assert not any('/imgui-godot/' in f for f in files)
           PY
 
@@ -257,7 +244,7 @@ jobs:
           gh release view abyss-current --json assets --jq '.assets[].name'
 
       - name: Attach the deep plateau test beside the existing OpenGL APKs
-        if: ${{ github.ref_name == 'ccr-db6f07c2-0l01k6' }}
+        if: ${{ github.ref_name == 'ccr-db6f07c2-0l01k6' || github.ref_name == 'ccr-db6f07c2-heightmap' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
