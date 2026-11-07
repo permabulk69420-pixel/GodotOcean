@@ -52,9 +52,9 @@ var underwater_sky_day := -1.0
 ## Temporary A/B performance test: keep sky-radiance depth fixed while swimming.
 ## Fog, light attenuation, the water surface and time-of-day still change normally.
 const FREEZE_SKY_DEPTH_FOR_TEST := true
-## With the freeze on, the sky still stays as it is at the surface down to this depth (the old shallows' full depth), and
-## below it follows the depth only in coarse steps, so a deep dive goes dark with one refilter every few metres.
-const FROZEN_SKY_DOWN_TO := 32.0
+## With the freeze on, the sky still stays as it is at the surface down to this depth (the shallows around the spawn),
+## and below it follows the depth only in coarse steps, so going deeper shows, with one refilter every few metres.
+const FROZEN_SKY_DOWN_TO := 10.0
 const DEEP_SKY_STEP := 6.0
 var underwater_sky_depth := -1.0
 

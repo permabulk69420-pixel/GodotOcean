@@ -51,6 +51,9 @@ var _job:=-1
 var _job_results: Array[Dictionary]=[]
 var _centre:=Vector3.INF
 var _clock:=0
+## Something changed (new tiles built, or a new set wanted), so what is on screen needs looking at again.
+var _dirty:=false
+var _shown_wanted:=0
 
 func _ready() -> void:
 	if not settings: settings=AbyssTerrainSettings.new()
@@ -79,15 +82,15 @@ func _process(_delta: float) -> void:
 		_job=-1
 		for result in _job_results: _cache[result.key]=result
 		_job_results=[]
+		_dirty=true
 	if _job==-1:
 		var batch:=[]
 		while not _pending.is_empty() and batch.size()<TILES_PER_JOB:
 			var key: String=_pending.pop_front()
 			if _wanted.has(key) and not _cache.has(key): batch.append([key,_wanted[key].size,_wanted[key].x,_wanted[key].z])
 		if not batch.is_empty(): _job=WorkerThreadPool.add_task(_build_job.bind(batch),false,'Terrain tiles')
-	var ready:=_job==-1 and _pending.is_empty()
-	if ready and not all_ready: _swap()
-	all_ready=ready and chunks.size()==_wanted.size()
+	if _dirty: _update_display()
+	all_ready=_job==-1 and _pending.is_empty() and _shown_wanted==_wanted.size() and chunks.size()==_wanted.size()
 	_build_collision(centre)
 	hole.update(centre)
 	if not near_ready and all_ready:
@@ -112,6 +115,7 @@ func _choose(centre: Vector3) -> void:
 	_wanted=wanted
 	_split=split
 	all_ready=false
+	_dirty=true
 	_pending.clear()
 	for key in _wanted:
 		if not _cache.has(key): _pending.append(key)
@@ -135,32 +139,54 @@ func _visit(level: int,x: float,z: float,centre: Vector3,wanted: Dictionary,spli
 			return
 	wanted[key]={size=size,x=x,z=z,near=near}
 
-## Puts the wanted set on screen in one go, reusing tiles already there.
-func _swap() -> void:
+## Brings what is on screen towards the wanted set, a patch at a time, as tiles get built. A wanted tile is shown as
+## soon as it is built, unless it lies over a tile still on screen that is no longer wanted (a coarser one being split,
+## or finer ones being joined): that old tile stays until every wanted tile over its ground is built, and then they
+## change over together. So the ground never goes missing while you move, and nothing is ever drawn twice.
+func _update_display() -> void:
+	_dirty=false
+	var waiting:={}
 	for key in chunks.keys():
-		if not _wanted.has(key):
+		if _wanted.has(key): continue
+		var old: Dictionary=chunks[key]
+		var over:=[]
+		var ready:=true
+		for k in _wanted:
+			var w: Dictionary=_wanted[k]
+			if w.x<old.x+old.size and old.x<w.x+w.size and w.z<old.z+old.size and old.z<w.z+w.size:
+				over.append(k)
+				if not _cache.has(k): ready=false
+		if ready:
 			chunks[key].body.queue_free()
 			chunks.erase(key)
+			for k in over: _show(k)
+		else:
+			for k in over: waiting[k]=true
+	_shown_wanted=0
 	for key in _wanted:
-		if chunks.has(key): continue
-		var built: Dictionary=_cache[key]
-		built.used=_clock
-		if not built.has('mesh'):
-			var mesh:=ArrayMesh.new()
-			mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,built.arrays)
-			built.mesh=mesh
-		var body:=StaticBody3D.new()
-		body.name='Tile_%s'%key.replace(':','_')
-		body.collision_layer=1
-		body.collision_mask=0
-		var visual:=MeshInstance3D.new()
-		visual.mesh=built.mesh
-		visual.material_override=material
-		visual.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		body.add_child(visual)
-		add_child(body)
-		chunks[key]={size=_wanted[key].size,x=_wanted[key].x,z=_wanted[key].z,body=body}
+		if not chunks.has(key) and _cache.has(key) and not waiting.has(key): _show(key)
+		if chunks.has(key): _shown_wanted+=1
+
+func _show(key: String) -> void:
+	if chunks.has(key): return
+	var built: Dictionary=_cache[key]
+	built.used=_clock
 	_clock+=1
+	if not built.has('mesh'):
+		var mesh:=ArrayMesh.new()
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,built.arrays)
+		built.mesh=mesh
+	var body:=StaticBody3D.new()
+	body.name='Tile_%s'%key.replace(':','_')
+	body.collision_layer=1
+	body.collision_mask=0
+	var visual:=MeshInstance3D.new()
+	visual.mesh=built.mesh
+	visual.material_override=material
+	visual.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	body.add_child(visual)
+	add_child(body)
+	chunks[key]={size=_wanted[key].size,x=_wanted[key].x,z=_wanted[key].z,body=body}
 
 func _wants_collision(tile: Dictionary,centre: Vector3) -> bool:
 	if tile.size!=SIZES[0]: return false
