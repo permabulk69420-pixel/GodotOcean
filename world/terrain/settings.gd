@@ -7,12 +7,11 @@ extends Resource
 @export var world_size := 4096.0
 
 @export_group('Giant hole')
-## In the abyssal plateau. The rim falls away at hole_radius; the walls come down to a flat floor hole_floor_radius
-## across, at hole_floor.
-@export var hole_centre := Vector2(0.0, -1450.0)
-@export var hole_radius := 260.0
-@export var hole_floor_radius := 120.0
-@export var hole_floor := -720.0
+## In the abyssal plateau, about 1.5 km north of the spawn. Its walls (AbyssHole) drop from the rim at hole_radius to
+## the floor at hole_floor.
+@export var hole_centre := Vector2(0.0, -1500.0)
+@export var hole_radius := 220.0
+@export var hole_floor := -820.0
 
 ## Everywhere the sea floor exists and the player may swim.
 func play_area() -> Rect2:

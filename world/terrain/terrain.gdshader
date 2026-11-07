@@ -23,8 +23,16 @@ uniform sampler2D ground_normal : hint_normal, repeat_enable, filter_linear_mipm
 uniform float ground_tile_size = 20.0;
 uniform float ground_normal_strength = 1.0;
 uniform vec3 sand_tint = vec3(1.55, 1.5, 1.38);
-// Rocks and steep faces carry no sand: the same texture, darker and greyer.
-uniform vec3 rock_tint = vec3(0.55, 0.58, 0.56);
+// Rock (steep faces, and rocky regions): its own texture (Poly Haven rock_wall_02, CC0, 2K: weathered coastal rock),
+// projected from the side on steep faces and from above on level rock, blended between the two only across a narrow
+// band of slopes.
+uniform sampler2D rock_colour : source_color, repeat_enable, filter_linear_mipmap_anisotropic;
+uniform sampler2D rock_normal : hint_normal, repeat_enable, filter_linear_mipmap_anisotropic;
+uniform float rock_tile_size = 32.0;
+// A second, larger copy of the rock blended in (colour only), so big faces do not show a repeating pattern.
+uniform float rock_macro_scale = 0.29;
+uniform float rock_macro_amount = 0.45;
+uniform vec3 rock_tint = vec3(0.78, 0.8, 0.82);
 // Baked sun occlusion darkens the surface only while the sun is up (1 = day, 0 = night).
 uniform float sun_shadow_strength = 1.0;
 uniform vec3 emitted : source_color = vec3(0.0);
@@ -108,19 +116,43 @@ void fragment() {
  vec3 side_colour = vec3(0.0);
  vec3 side_n = n;
  if (flat_amount < 0.998) {
-  side_colour = linear_in(textureGrad(ground_colour, side_uv, side_dx, side_dy).rgb);
-  if (normal_detail > 0.001) {
-   vec3 t = unpack_normal(textureGrad(ground_normal, side_uv, side_dx, side_dy), ground_normal_strength);
-   if (along_x) {
-    t.x *= axis_sign.x;
-    t = vec3(t.xy + n.zy, abs(t.z) * n.x);
-    side_n = normalize(mix(n, normalize(t.zyx), normal_detail));
-   } else {
-    t.x *= -axis_sign.z;
-    t = vec3(t.xy + n.xy, abs(t.z) * n.z);
-    side_n = normalize(mix(n, normalize(t.xyz), normal_detail));
+  float rock_scale = ground_tile_size / rock_tile_size;
+  float from_above = smoothstep(0.55, 0.75, abs(n.y));
+  vec3 wall_colour = vec3(0.0);
+  vec3 wall_n = n;
+  if (from_above < 0.999) {
+   vec2 uv = side_uv * rock_scale;
+   wall_colour = linear_in(textureGrad(rock_colour, uv, side_dx * rock_scale, side_dy * rock_scale).rgb);
+   float m = rock_scale * rock_macro_scale;
+   wall_colour = mix(wall_colour, linear_in(textureGrad(rock_colour, side_uv * m + vec2(0.37, 0.71), side_dx * m, side_dy * m).rgb), rock_macro_amount);
+   if (normal_detail > 0.001) {
+    vec3 t = unpack_normal(textureGrad(rock_normal, uv, side_dx * rock_scale, side_dy * rock_scale), ground_normal_strength);
+    if (along_x) {
+     t.x *= axis_sign.x;
+     t = vec3(t.xy + n.zy, abs(t.z) * n.x);
+     wall_n = normalize(mix(n, normalize(t.zyx), normal_detail));
+    } else {
+     t.x *= -axis_sign.z;
+     t = vec3(t.xy + n.xy, abs(t.z) * n.z);
+     wall_n = normalize(mix(n, normalize(t.xyz), normal_detail));
+    }
    }
   }
+  vec3 level_colour = vec3(0.0);
+  vec3 level_n = n;
+  if (from_above > 0.001) {
+   vec2 uv = top_uv * rock_scale;
+   level_colour = linear_in(textureGrad(rock_colour, uv, top_dx * rock_scale, top_dy * rock_scale).rgb);
+   float m = rock_scale * rock_macro_scale;
+   level_colour = mix(level_colour, linear_in(textureGrad(rock_colour, top_uv * m + vec2(0.37, 0.71), top_dx * m, top_dy * m).rgb), rock_macro_amount);
+   if (normal_detail > 0.001) {
+    vec3 t = unpack_normal(textureGrad(rock_normal, uv, top_dx * rock_scale, top_dy * rock_scale), ground_normal_strength);
+    t = vec3(t.xy + n.xz, abs(t.z) * n.y);
+    level_n = normalize(mix(n, normalize(t.xzy), normal_detail));
+   }
+  }
+  side_colour = mix(wall_colour, level_colour, from_above);
+  side_n = normalize(mix(wall_n, level_n, from_above));
  }
  vec3 albedo = mix(side_colour * rock_tint, top_colour * sand_tint, flat_amount);
  ALBEDO = albedo * mix(1.0, mix(0.25, 1.0, sunlight), sun_shadow_strength);

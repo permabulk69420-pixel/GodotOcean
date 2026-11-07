@@ -8,6 +8,8 @@ extends Node3D
 
 const GROUND_COLOUR=preload('res://world/terrain/textures/ground_colour.jpg')
 const GROUND_NORMAL=preload('res://world/terrain/textures/ground_normal.jpg')
+const ROCK_COLOUR=preload('res://world/terrain/textures/rock_colour.jpg')
+const ROCK_NORMAL=preload('res://world/terrain/textures/rock_normal.jpg')
 ## Tile sizes, nearest first. A 64 m tile has 2 m detail; a 1024 m one 32 m.
 const SIZES:=[64.0,128.0,256.0,512.0,1024.0]
 const SEGMENTS:=32
@@ -17,7 +19,7 @@ const SPLIT:=1.25
 const HYSTERESIS:=1.15
 ## Tiles further than this are not built at all: under water the camera sees 150 m, and from above the water the sea
 ## floor is not drawn.
-const VIEW_RANGE:=200.0
+const VIEW_RANGE:=220.0
 ## How many tiles one background task builds (about 3 ms each on a desktop).
 const TILES_PER_JOB:=6
 ## The tiles wanted are worked out again once the camera has moved this far.
@@ -29,7 +31,10 @@ const CACHE_LIMIT:=500
 
 @export var settings: AbyssTerrainSettings
 var observer: Node3D
+## VIEW_RANGE, unless something (a debug view) wants to see further.
+var view_range:=VIEW_RANGE
 var world: AbyssWorldMap
+var hole: AbyssHole
 var material: ShaderMaterial
 ## True once the first tiles around the start are on screen and those close by can be collided with. Only that first
 ## load holds the player still.
@@ -54,6 +59,12 @@ func _ready() -> void:
 	material.shader=load('res://world/terrain/terrain.gdshader')
 	material.set_shader_parameter('ground_colour',GROUND_COLOUR)
 	material.set_shader_parameter('ground_normal',GROUND_NORMAL)
+	material.set_shader_parameter('rock_colour',ROCK_COLOUR)
+	material.set_shader_parameter('rock_normal',ROCK_NORMAL)
+	hole=AbyssHole.new()
+	hole.name='Hole'
+	add_child(hole)
+	hole.start(AbyssWorldMap.new(settings),material)
 
 func focus() -> Vector3:
 	return observer.global_position if observer and observer.is_inside_tree() else Vector3.ZERO
@@ -78,6 +89,7 @@ func _process(_delta: float) -> void:
 	if ready and not all_ready: _swap()
 	all_ready=ready and chunks.size()==_wanted.size()
 	_build_collision(centre)
+	hole.update(centre)
 	if not near_ready and all_ready:
 		near_ready=true
 		for key in chunks:
@@ -110,7 +122,7 @@ func _visit(level: int,x: float,z: float,centre: Vector3,wanted: Dictionary,spli
 	var size: float=SIZES[level]
 	var key:='%d:%d:%d'%[size,x,z]
 	var near:=Vector2(centre.x,centre.z).distance_to(Vector2(clampf(centre.x,x,x+size),clampf(centre.z,z,z+size)))
-	if near>VIEW_RANGE: return
+	if near>view_range: return
 	if level>0:
 		var limit:=size*SPLIT*(HYSTERESIS if _split.has(key) else 1.0)
 		if near<limit:
@@ -205,10 +217,14 @@ static func build_tile(map: AbyssWorldMap,size: float,x0: float,z0: float) -> Di
 	var step:=size/n
 	var side:=n+3
 	var h:=PackedFloat32Array()
+	var sand:=PackedFloat32Array()
 	h.resize(side*side)
+	sand.resize(side*side)
 	for j in range(side):
 		for i in range(side):
-			h[i+side*j]=map.height(x0+(i-1)*step,z0+(j-1)*step)
+			var here:=map.sample(x0+(i-1)*step,z0+(j-1)*step)
+			h[i+side*j]=here.x
+			sand[i+side*j]=here.y
 	var vertices:=PackedVector3Array()
 	var normals:=PackedVector3Array()
 	var colours:=PackedColorArray()
@@ -220,8 +236,9 @@ static func build_tile(map: AbyssWorldMap,size: float,x0: float,z0: float) -> Di
 			vertices.append(Vector3(x0+i*step,h[c],z0+j*step))
 			var normal:=Vector3(h[c-1]-h[c+1],2.0*step,h[c-side]-h[c+side]).normalized()
 			normals.append(normal)
-			# Sand where it faces up, rock on the slopes; sunlit and open everywhere (the shader reads these).
-			colours.append(Color(smoothstep(0.35,0.86,normal.y),1.0,1.0,1.0))
+			# Sand where the region is sandy and the ground faces up, rock elsewhere; sunlit everywhere; large lighter and
+			# darker patches (in the ambient occlusion channel) so the textures do not read as a repeating pattern.
+			colours.append(Color(smoothstep(0.5,0.88,normal.y)*sand[c],1.0,map.patch(x0+i*step,z0+j*step),1.0))
 	for j in range(n):
 		for i in range(n):
 			var a:=i+stride*j
